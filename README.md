@@ -1,8 +1,6 @@
 # Hookwright
 
-> Production-grade outbound webhooks for ASP.NET Core — as a NuGet package, not a second service.
-
-[![CI](https://github.com/peskosergij/Hookwright/actions/workflows/ci.yml/badge.svg)](https://github.com/peskosergij/Hookwright/actions/workflows/ci.yml)
+[![CI](https://github.com/Serhii-beep/Hookwright/actions/workflows/ci.yml/badge.svg)](https://github.com/Serhii-beep/Hookwright/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 
