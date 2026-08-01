@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hookwright.Core/Hookwright.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hookwright.Core.Tests/Hookwright.Core.Tests.csproj" />
+  </Folder>
+</Solution>
