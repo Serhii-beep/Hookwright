@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a capability Hookwright does not have
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: >
+        Describe the situation, not the solution. Proposals that start from a
+        real problem get further than proposals that start from an API shape.
+    validations:
+      required: true
+  
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Hookwright to do?
+    validations:
+      required: true
+  
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How are you working around it today?

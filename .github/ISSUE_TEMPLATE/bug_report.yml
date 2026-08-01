@@ -1,0 +1,54 @@
+name: Bug report
+description: Hookwright behaves differently from what the documentation says
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Hookwright version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Database provider
+      options: [PostgreSQL, SQL Server, SQLite, In-memory]
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Hosting model
+      options: [Embedded in an ASP.NET Core app, Standalone dispatcher]
+    validations:
+      required: true
+  
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+  
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: >
+        Include the delivery id (dlv_...) or event id (evt_...) if you have one,
+        plus any relevant log output.
+    validations:
+      required: true
+  
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >
+        A minimal repro is worth more than a description. Configuration matters -
+        include your AddHookwright(...) options if they differ from the defaults.
+    validations:
+      required: true
