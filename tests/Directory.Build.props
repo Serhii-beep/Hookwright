@@ -8,8 +8,13 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Analyzer relaxations">
-    <!-- CA1707: underscores in identifiers. -->
-    <!-- CA:2007: ConfigureAwait. No synchronization context in a test host. -->
-    <NoWarn>$(NoWarn);CA1707;CA2007</NoWarn>
+    <!-- CA1707: underscores in identifiers. Test names read as
+         Method_Condition_ExpectedResult, which is deliberate. -->
+    <!-- CA2007: ConfigureAwait. No synchronization context in a test host. -->
+    <!-- CA1054: URI parameters should not be strings. xUnit can only pre-enumerate
+         theory rows whose values it can serialize, and System.Uri is not among them.
+         Passing Uri through MemberData makes the theory undiscoverable by name and it
+         appears twice in Test Explorer, so URI test inputs are strings. -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1054</NoWarn>
   </PropertyGroup>
 </Project>

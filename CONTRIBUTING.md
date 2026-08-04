@@ -22,6 +22,7 @@ Most conventions are enforced by analyzers. These are not, and are checked in re
 - **No primary constructors.** A captured parameter cannot be marked `readonly`; an explicit constructor assigning `private readonly` fields states the intent and enforces it.
 - **Analyzer suppressions carry a written justification**, in `.editorconfig` or the relevant `Directory.Build.props`. Never `#pragma`, never an unexplained entry in `NoWarn`.
 - **No `DateTime.UtcNow` in code with behaviour.** Inject `TimeProvider`, so time-dependent logic is testable without sleeping.
+- **A new persisted enum needs a pinned-value test.** Structural checks are discovered by reflection, but the numeric values are a wire format and pinning them is deliberate - see `PersistedEnumTests`.
 
 ## Commits
 

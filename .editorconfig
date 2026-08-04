@@ -417,3 +417,9 @@ csharp_prefer_simple_using_statement = true:error
 dotnet_style_readonly_field = true:error
 
 csharp_style_prefer_primary_constructors = false:silent
+
+# CA1028: "Enum storage should be Int32."
+# Deliberate. These enums are persisted, and DeliveryState in particular is the
+# leading column of the claim index - the hottest index in the system. A narrower
+# key fits more entries per page, so the index is smaller and hotter in cache.
+dotnet_diagnostic.CA1028.severity = none
