@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
 
-using Hookwright.Core.Entities;
+using Hookwright.Core.Subscribers;
 
 namespace Hookwright.Core.Tests.Architecture;
 
@@ -10,7 +10,7 @@ namespace Hookwright.Core.Tests.Architecture;
 /// </summary>
 public sealed class ArchitectureTests
 {
-    private const string EntitiesNamespace = "Hookwright.Core.Entities";
+    private const string IdentifiersNamespace = "Hookwright.Core.Identifiers";
 
     private static readonly Assembly CoreAssembly = typeof(Subscriber).Assembly;
 
@@ -31,46 +31,58 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Entities_Always_AreSealed()
+    public void DomainTypes_Always_AreSealed()
     {
         string[] unsealed =
         [
-            .. EntityClasses()
+            .. DomainClasses()
                 .Where(type => !type.IsSealed)
                 .Select(type => type.Name)
                 .Order(StringComparer.Ordinal)
         ];
 
-        unsealed.ShouldBeEmpty($"Entities must be sealed: {string.Join(", ", unsealed)}");
+        unsealed.ShouldBeEmpty($"Domain types must be sealed: {string.Join(", ", unsealed)}");
     }
 
     [Fact]
-    public void Entities_Always_HaveNoPubliclyWritableProperties()
+    public void DomainTypes_Always_HaveNoPubliclyWritableProperties()
     {
         string[] writable =
         [
-            .. EntityClasses()
+            .. DomainClasses()
                 .SelectMany(type => type
-                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                     .Where(property => property.SetMethod is { IsPublic: true })
                     .Select(property => $"{type.Name}.{property.Name}"))
                 .Order(StringComparer.Ordinal)
         ];
 
-        writable.ShouldBeEmpty($"Entities must not expose public setters: {string.Join(", ", writable)}");
+        writable.ShouldBeEmpty($"Domain types must not declare public setters: {string.Join(", ", writable)}");
     }
 
     [Fact]
-    public void EntityClasses_Always_DiscoversSomething()
+    public void DomainClasses_Always_DiscoversSomething()
     {
-        EntityClasses().ShouldNotBeEmpty();
+        DomainClasses().ShouldNotBeEmpty();
     }
 
-    private static IEnumerable<Type> EntityClasses()
+    private static IEnumerable<Type> DomainClasses()
     {
         return CoreAssembly
             .GetExportedTypes()
-            .Where(type => type.IsClass && type.Namespace == EntitiesNamespace);
+            .Where(type => type.IsClass && IsDomainNamespace(type.Namespace));
+    }
+
+    /// <summary>
+    /// Everything in Core is domain except the shared identifier primitives. Framed as an
+    /// exclusion so that a new aggregate namespace is covered automatically rather than
+    /// quietly escaping these rules.
+    /// </summary>
+    private static bool IsDomainNamespace(string? candidate)
+    {
+        return candidate is not null
+            && candidate.StartsWith("Hookwright.Core.", StringComparison.Ordinal)
+            && candidate != IdentifiersNamespace;
     }
 
     private static bool IsBaseClassLibrary(string? name)
