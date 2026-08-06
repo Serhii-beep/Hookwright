@@ -48,6 +48,15 @@ public static class DeliveryStateMachine
             [DeliveryState.Cancelled] = []
         }.ToFrozenDictionary();
 
+
+    private static readonly FrozenSet<DeliveryState> TerminalStates = FrozenSet.ToFrozenSet(
+    [
+        DeliveryState.Succeeded,
+        DeliveryState.Failed,
+        DeliveryState.Dead,
+        DeliveryState.Cancelled
+    ]);
+
     /// <summary>
     /// The states reachable in one step from <paramref name="from"/>.
     /// </summary>
@@ -82,5 +91,17 @@ public static class DeliveryStateMachine
         {
             throw new InvalidDeliveryTransitionException(from, to);
         }
+    }
+
+    /// <summary>
+    /// Whether a delivery in this state has finished and will not be attempted again.
+    /// </summary>
+    /// <remarks>
+    /// This cannot be derived from <see cref="AllowedTargets(DeliveryState)"/>. Some
+    /// of these states can still be reopened by an explicit operator retry.
+    /// </remarks>
+    public static bool IsTerminal(DeliveryState state)
+    {
+        return TerminalStates.Contains(state);
     }
 }

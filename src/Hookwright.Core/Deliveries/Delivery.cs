@@ -93,11 +93,7 @@ public sealed class Delivery
     /// <summary>
     /// Whether this delivery has finished and will not be attempted again.
     /// </summary>
-    public bool IsTerminal => State
-        is DeliveryState.Succeeded
-        or DeliveryState.Failed
-        or DeliveryState.Dead
-        or DeliveryState.Cancelled;
+    public bool IsTerminal => DeliveryStateMachine.IsTerminal(State);
 
     /// <summary>
     /// Creates a delivery for one event and one endpoint,
@@ -129,5 +125,98 @@ public sealed class Delivery
     public bool IsLeaseExpired(DateTimeOffset instant)
     {
         return State is DeliveryState.InFlight && LeaseExpiresAt is { } expiry && expiry <= instant;
+    }
+
+    /// <summary>
+    /// Takes ownership of this delivery for one attempt, under a lease that lapses at <paramref name="leaseExpiresAt"/>
+    /// </summary>
+    /// <param name="leaseOwner">Identifies the worker, as <c>{machine}:{pid}:{id}</c>.</param>
+    /// <param name="leaseExpiresAt">When the claim lapses and the work may be reclaimed.</param>
+    /// <param name="now">The current instant, supplied by the caller's <see cref="TimeProvider"/></param>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery is not claimable.</exception>
+    public void Claim(string leaseOwner, DateTimeOffset leaseExpiresAt, DateTimeOffset now)
+    {
+        string owner = ValidateLeaseOwner(leaseOwner);
+
+        if (leaseExpiresAt <= now)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(leaseExpiresAt),
+                leaseExpiresAt,
+                "A lease must expire in the future.");
+        }
+
+        TransitionTo(DeliveryState.InFlight);
+
+        LeaseOwner = owner;
+        LeaseExpiresAt = leaseExpiresAt;
+
+        AttemptCount++;
+    }
+
+    /// <summary>
+    /// Records that the endpoint accepted the event.
+    /// </summary>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery is not in flight.</exception>
+    public void MarkSucceeded(DateTimeOffset completedAt)
+    {
+        TransitionTo(DeliveryState.Succeeded, completedAt);
+        ReleaseLease();
+    }
+
+    /// <summary>
+    /// Records that the endpoint rejected the event in a way retrying cannot fix.
+    /// </summary>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery is not in flight.</exception>
+    public void MarkFailed(DateTimeOffset completedAt)
+    {
+        TransitionTo(DeliveryState.Failed, completedAt);
+        ReleaseLease();
+    }
+
+    /// <summary>
+    /// Records that event retry was used without success.
+    /// </summary>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery is not in flight.</exception>
+    public void MarkDead(DateTimeOffset completedAt)
+    {
+        TransitionTo(DeliveryState.Dead, completedAt);
+        ReleaseLease();
+    }
+
+    private void TransitionTo(DeliveryState to, DateTimeOffset? completedAt = null)
+    {
+        DeliveryStateMachine.EnsureCanTransition(State, to);
+
+        if (DeliveryStateMachine.IsTerminal(to))
+        {
+            CompletedAt = completedAt ?? throw new ArgumentNullException(
+                nameof(completedAt), "A terminal transition must record when the delivery completed.");
+        }
+        else
+        {
+            CompletedAt = null;
+        }
+
+        State = to;
+    }
+
+    private void ReleaseLease()
+    {
+        LeaseOwner = null;
+        LeaseExpiresAt = null;
+    }
+
+    private static string ValidateLeaseOwner(string leaseOwner)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
+
+        string trimmed = leaseOwner.Trim();
+
+        return trimmed.Length <= MaxLeaseOwnerLength
+            ? trimmed
+            : throw new ArgumentException(
+                $"Lease owner must be at most {MaxLeaseOwnerLength} characters.",
+                nameof(leaseOwner));
     }
 }
