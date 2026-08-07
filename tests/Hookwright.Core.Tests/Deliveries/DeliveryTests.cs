@@ -19,6 +19,43 @@ public sealed class DeliveryTests
         return delivery;
     }
 
+    private static Delivery CreateDeliveryInState(DeliveryState state)
+    {
+        Delivery delivery = CreateDelivery();
+
+        switch (state)
+        {
+            case DeliveryState.Pending:
+                break;
+            case DeliveryState.Blocked:
+                delivery.Block();
+                break;
+            case DeliveryState.Cancelled:
+                delivery.Cancel(Now);
+                break;
+            case DeliveryState.InFlight:
+                delivery.Claim(Worker, Now.AddSeconds(60), Now);
+                break;
+            case DeliveryState.Succeeded:
+                delivery.Claim(Worker, Now.AddSeconds(60), Now);
+                delivery.MarkSucceeded(Now);
+                break;
+            case DeliveryState.Failed:
+                delivery.Claim(Worker, Now.AddSeconds(60), Now);
+                delivery.MarkFailed(Now);
+                break;
+            case DeliveryState.Dead:
+                delivery.Claim(Worker, Now.AddSeconds(60), Now);
+                delivery.MarkDead(Now);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(state), state, "No path to this state.");
+        }
+
+        delivery.State.ShouldBe(state);
+        return delivery;
+    }
+
     [Fact]
     public void Create_Always_ProducesAPendingDeliveryDueImmediately()
     {
@@ -171,5 +208,158 @@ public sealed class DeliveryTests
     public void IsDue_GivenAClaimedDelivery_IsFalse()
     {
         CreateClaimedDelivery().IsDue(Now.AddYears(1)).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(DeliveryState.Pending, false)]
+    [InlineData(DeliveryState.InFlight, false)]
+    [InlineData(DeliveryState.Blocked, false)]
+    [InlineData(DeliveryState.Succeeded, true)]
+    [InlineData(DeliveryState.Failed, true)]
+    [InlineData(DeliveryState.Dead, true)]
+    [InlineData(DeliveryState.Cancelled, true)]
+    public void IsTerminal_Always_ReflectsTheState(DeliveryState state, bool expected)
+    {
+        CreateDeliveryInState(state).IsTerminal.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void EveryTransition_Always_KeepsCompletedAtInStepWithIsTerminal()
+    {
+        (string Move, Delivery Delivery, Action<Delivery> Act)[] transitions =
+        [
+              ("Pending -> InFlight",   CreateDeliveryInState(DeliveryState.Pending),   d => d.Claim(Worker, Now.AddSeconds(60), Now)),
+              ("Pending -> Blocked",    CreateDeliveryInState(DeliveryState.Pending),   d => d.Block()),
+              ("Pending -> Cancelled",  CreateDeliveryInState(DeliveryState.Pending),   d => d.Cancel(Now)),
+              ("InFlight -> Succeeded", CreateDeliveryInState(DeliveryState.InFlight),  d => d.MarkSucceeded(Now)),
+              ("InFlight -> Failed",    CreateDeliveryInState(DeliveryState.InFlight),  d => d.MarkFailed(Now)),
+              ("InFlight -> Dead",      CreateDeliveryInState(DeliveryState.InFlight),  d => d.MarkDead(Now)),
+              ("InFlight -> Pending",   CreateDeliveryInState(DeliveryState.InFlight),  d => d.ScheduleRetry(Now.AddMinutes(5))),
+              ("Blocked -> Pending",    CreateDeliveryInState(DeliveryState.Blocked),   d => d.Unblock()),
+              ("Blocked -> Cancelled",  CreateDeliveryInState(DeliveryState.Blocked),   d => d.Cancel(Now)),
+              ("Succeeded -> Pending",  CreateDeliveryInState(DeliveryState.Succeeded), d => d.Reopen(Now)),
+              ("Failed -> Pending",     CreateDeliveryInState(DeliveryState.Failed),    d => d.Reopen(Now)),
+              ("Dead -> Pending",       CreateDeliveryInState(DeliveryState.Dead),      d => d.Reopen(Now)),
+        ];
+
+        foreach ((string move, Delivery delivery, Action<Delivery> act) in transitions)
+        {
+            act(delivery);
+
+            (delivery.CompletedAt is not null).ShouldBe(delivery.IsTerminal, move);
+        }
+
+        transitions.Length.ShouldBe(
+            Enum.GetValues<DeliveryState>().Sum(from => DeliveryStateMachine.AllowedTargets(from).Count));
+    }
+
+    [Fact]
+    public void ScheduleRetry_GivenAnInFlightDelivery_RequeuesWithoutResettingTheAttemptCount()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.InFlight);
+
+        delivery.ScheduleRetry(Now.AddMinutes(5));
+
+        delivery.State.ShouldBe(DeliveryState.Pending);
+        delivery.NextAttemptAt.ShouldBe(Now.AddMinutes(5));
+        delivery.AttemptCount.ShouldBe(1);
+        delivery.LeaseOwner.ShouldBeNull();
+        delivery.CompletedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ClaimAndScheduleRetry_Repeated_AccumulatesAttempts()
+    {
+        Delivery delivery = CreateDelivery();
+
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            delivery.Claim(Worker, Now.AddSeconds(60), Now);
+            delivery.AttemptCount.ShouldBe(attempt);
+            delivery.ScheduleRetry(Now.AddMinutes(attempt));
+        }
+    }
+
+    [Fact]
+    public void ScheduleRetry_GivenABlockedDelivery_Throws()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.Blocked);
+
+        Should.Throw<InvalidOperationException>(() => delivery.ScheduleRetry(Now));
+    }
+
+    [Fact]
+    public void Reclaim_GivenALapsedLease_RequeuesImmediately()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.InFlight);
+
+        delivery.Reclaim(Now.AddSeconds(90));
+
+        delivery.State.ShouldBe(DeliveryState.Pending);
+        delivery.NextAttemptAt.ShouldBe(Now.AddSeconds(90));
+        delivery.LeaseOwner.ShouldBeNull();
+        delivery.AttemptCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Reclaim_GivenALeaseStillHeld_Throws()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.InFlight);
+
+        Should.Throw<InvalidOperationException>(() => delivery.Reclaim(Now.AddSeconds(30)));
+
+        delivery.State.ShouldBe(DeliveryState.InFlight);
+        delivery.LeaseOwner.ShouldBe(Worker);
+    }
+
+    [Fact]
+    public void BlockThenUnblock_RoundTrips()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.Blocked);
+
+        delivery.Unblock();
+
+        delivery.State.ShouldBe(DeliveryState.Pending);
+        delivery.IsDue(Now).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Unblock_GivenAPendingDelivery_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => CreateDeliveryInState(DeliveryState.Pending).Unblock());
+    }
+
+    [Fact]
+    public void Cancel_GivenAnInFlightDelivery_Throws()
+    {
+        Should.Throw<InvalidDeliveryTransitionException>(() => CreateDeliveryInState(DeliveryState.InFlight).Cancel(Now));
+    }
+
+    [Theory]
+    [InlineData(DeliveryState.Succeeded)]
+    [InlineData(DeliveryState.Failed)]
+    [InlineData(DeliveryState.Dead)]
+    public void Reopen_GivenACompletedDelivery_ResetsTheAttemptBudget(DeliveryState state)
+    {
+        Delivery delivery = CreateDeliveryInState(state);
+
+        delivery.Reopen(Now.AddMinutes(1));
+
+        delivery.State.ShouldBe(DeliveryState.Pending);
+        delivery.AttemptCount.ShouldBe(0);
+        delivery.CompletedAt.ShouldBeNull();
+        delivery.NextAttemptAt.ShouldBe(Now.AddMinutes(1));
+    }
+
+    [Fact]
+    public void Reopen_GivenACancelledDelivery_Throws()
+    {
+        Should.Throw<InvalidDeliveryTransitionException>(() => CreateDeliveryInState(DeliveryState.Cancelled).Reopen(Now));
+    }
+
+    [Fact]
+    public void Reopen_GivenAPendingDelivery_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => CreateDeliveryInState(DeliveryState.Pending).Reopen(Now));
     }
 }

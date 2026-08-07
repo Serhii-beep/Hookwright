@@ -184,6 +184,103 @@ public sealed class Delivery
         ReleaseLease();
     }
 
+    /// <summary>
+    /// Returns this delivery to the queue after a retryable failure, to be attempted again
+    /// no earlier than <paramref name="nextAttemptAt"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The delivery is not in flight.</exception>
+    public void ScheduleRetry(DateTimeOffset nextAttemptAt)
+    {
+        if (State is not DeliveryState.InFlight)
+        {
+            throw new InvalidOperationException("Only an in-flight delivery can be rescheduled.");
+        }
+
+        TransitionTo(DeliveryState.Pending);
+        ReleaseLease();
+        NextAttemptAt = nextAttemptAt;
+    }
+
+    /// <summary>
+    /// Returns this delivery to the queue after its lease expired, which almost always
+    /// means the worker holding it died.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The delivery is not in flight, or its lease has not lapsed yet.
+    /// </exception>
+    public void Reclaim(DateTimeOffset now)
+    {
+        if (!IsLeaseExpired(now))
+        {
+            throw new InvalidOperationException(
+                State is DeliveryState.InFlight
+                    ? "This delivery's lease has not lapsed. Reclaiming it would put two workers on one delivery."
+                    : "Only an in-flight delivery can be reclaimed.");
+        }
+
+        TransitionTo(DeliveryState.Pending);
+        ReleaseLease();
+        NextAttemptAt = now;
+    }
+
+    /// <summary>
+    /// Holds this delivery behind an older incomplete delivery in the same ordering
+    /// partition.
+    /// </summary>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery is not pending.</exception>
+    public void Block()
+    {
+        TransitionTo(DeliveryState.Blocked);
+    }
+
+    /// <summary>
+    /// Releases this delivery once the head of its partition has completed.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The delivery is not blocked.</exception>
+    public void Unblock()
+    {
+        if (State is not DeliveryState.Blocked)
+        {
+            throw new InvalidOperationException("Only a blocked delivery can be unblocked.");
+        }
+
+        TransitionTo(DeliveryState.Pending);
+    }
+
+    /// <summary>
+    /// Abandons this delivery because its endpoint was deleted or disabled.
+    /// </summary>
+    /// <remarks>
+    /// An in-flight delivery cannot be cancelled, so a bulk cancellation for a deleted
+    /// endpoint has to leave those rows alone and let them finish.
+    /// </remarks>
+    /// <exception cref="InvalidDeliveryTransitionException">The delivery cannot be cancelled.</exception>
+    public void Cancel(DateTimeOffset completedAt)
+    {
+        TransitionTo(DeliveryState.Cancelled, completedAt);
+        ReleaseLease();
+    }
+
+    /// <summary>
+    /// Reopens a completed delivery so it is attempted again.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The delivery has not completed.</exception>
+    /// <exception cref="InvalidDeliveryTransitionException">
+    /// The delivery was cancelled, so its endpoint no longer exists to retry to.
+    /// </exception>
+    public void Reopen(DateTimeOffset nextAttemptAt)
+    {
+        if (!IsTerminal)
+        {
+            throw new InvalidOperationException("Only a completed delivery can be reopened.");
+        }
+
+        TransitionTo(DeliveryState.Pending);
+
+        AttemptCount = 0;
+        NextAttemptAt = nextAttemptAt;
+    }
+
     private void TransitionTo(DeliveryState to, DateTimeOffset? completedAt = null)
     {
         DeliveryStateMachine.EnsureCanTransition(State, to);
