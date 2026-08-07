@@ -423,3 +423,10 @@ csharp_style_prefer_primary_constructors = false:silent
 # leading column of the claim index - the hottest index in the system. A narrower
 # key fits more entries per page, so the index is smaller and hotter in cache.
 dotnet_diagnostic.CA1028.severity = none
+
+#CA5394: Random is an insecure random number generator.
+# Retry jitter is not a security control: predicting a retry
+# delay gains nothing, and the ladder is public. A cryptographic RNG here
+# would cost throughput for no benefit.
+[src/Hookwright.Core/Deliveries/RetrySchedule.cs]
+dotnet_diagnostic.CA5394.severity = none
