@@ -18,7 +18,7 @@ The build treats warning as errors and enforces `.editorconfig` style rules, so 
 
 Most conventions are enforced by analyzers. These are not, and are checked in review:
 
-- **One type per file.** No enum, record or helper class sharing a file with an unrelated type. The file name matches the type it contains.
+- **One type per file.** One exception: a closed hierarchy - an abstract base with a private constructor plus its nested cases live in a single file.
 - **No primary constructors.** A captured parameter cannot be marked `readonly`; an explicit constructor assigning `private readonly` fields states the intent and enforces it.
 - **Analyzer suppressions carry a written justification**, in `.editorconfig` or the relevant `Directory.Build.props`. Never `#pragma`, never an unexplained entry in `NoWarn`.
 - **No `DateTime.UtcNow` in code with behaviour.** Inject `TimeProvider`, so time-dependent logic is testable without sleeping.

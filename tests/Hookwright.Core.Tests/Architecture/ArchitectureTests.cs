@@ -36,7 +36,7 @@ public sealed class ArchitectureTests
         string[] unsealed =
         [
             .. DomainClasses()
-                .Where(type => !type.IsSealed)
+                .Where(type => !type.IsSealed && !type.IsAbstract)
                 .Select(type => type.Name)
                 .Order(StringComparer.Ordinal)
         ];

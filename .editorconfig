@@ -430,3 +430,14 @@ dotnet_diagnostic.CA1028.severity = none
 # would cost throughput for no benefit.
 [src/Hookwright.Core/Deliveries/RetrySchedule.cs]
 dotnet_diagnostic.CA5394.severity = none
+
+#CA1034: Do not nest publicly visible types.
+# RetryDecision is a closed hierarchy - the base constructor is
+# private, and nesting is what makes it closed, since a non-nested type
+# could not call it. The rule's rationale is inverted here: `RetryDecision.Retry`
+# groups the cases and IntelliSense lists them together. The alternative that satisfies
+# the rule - an internal base constructor with top-level types forces every case to
+# carry a `Retry` prefix to avoid colliding with the vocabulary in this namespace, which
+# reads worse than the nesting it avoids.
+[src/Hookwright.Core/Deliveries/RetryDecision.cs]
+dotnet_diagnostic.CA1034.severity = none
