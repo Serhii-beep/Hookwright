@@ -1,8 +1,6 @@
 ﻿using System.Globalization;
 
-using Hookwright.Core.Signing;
-
-namespace Hookwright.Core.Tests.Signing;
+namespace Hookwright.Signing.Tests;
 
 public sealed class WebhookSecretTests
 {

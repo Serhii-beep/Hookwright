@@ -1,6 +1,4 @@
 using Hookwright.Core.Events;
-using Hookwright.Core.Identifiers;
-using Hookwright.Core.Subscribers;
 using Hookwright.Core.Tests.Identifiers;
 
 namespace Hookwright.Core.Tests.Events;

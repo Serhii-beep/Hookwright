@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 
 using Hookwright.Core.Subscribers;
+using Hookwright.Signing;
 
 namespace Hookwright.Core.Tests.Architecture;
 
@@ -13,21 +14,18 @@ public sealed class ArchitectureTests
     private const string IdentifiersNamespace = "Hookwright.Core.Identifiers";
 
     private static readonly Assembly CoreAssembly = typeof(Subscriber).Assembly;
+    private static readonly Assembly SigningAssembly = typeof(WebhookSecret).Assembly;
 
     [Fact]
-    public void Core_Always_ReferencesNothingOutsideTheBaseClassLibrary()
+    public void Signing_Always_ReferencesNothingOutsideTheBaseClassLibrary()
     {
-        string[] offenders =
-        [
-            .. CoreAssembly
-                .GetReferencedAssemblies()
-                .Select(reference => reference.Name)
-                .Where(name => !IsBaseClassLibrary(name))
-                .OfType<string>()
-                .Order(StringComparer.Ordinal)
-        ];
+        Outsiders(SigningAssembly).ShouldBeEmpty();
+    }
 
-        offenders.ShouldBeEmpty($"Hookwright.Core must depend only on the BCL, but references: {string.Join(", ", offenders)}");
+    [Fact]
+    public void Core_Always_HasNotThirdPartyDependency()
+    {
+        Outsiders(CoreAssembly, "Hookwright.Signing").ShouldBeEmpty();
     }
 
     [Fact]
@@ -90,5 +88,17 @@ public sealed class ArchitectureTests
         return name is not null
             && (name.StartsWith("System.", StringComparison.Ordinal)
                 || name is "System" or "netstandard" or "mscorlib");
+    }
+
+    private static string[] Outsiders(Assembly assembly, params string[] allowed)
+    {
+        return
+        [
+            .. assembly
+                .GetReferencedAssemblies()
+                .Select(reference => reference.Name)
+                .OfType<string>()
+                .Where(name => !IsBaseClassLibrary(name) && !allowed.Contains(name, StringComparer.Ordinal))
+        ];
     }
 }

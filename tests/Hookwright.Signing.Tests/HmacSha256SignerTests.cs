@@ -1,9 +1,6 @@
 ﻿using System.Text;
 
-using Hookwright.Core.Endpoints;
-using Hookwright.Core.Signing;
-
-namespace Hookwright.Core.Tests.Signing;
+namespace Hookwright.Signing.Tests;
 
 public sealed class HmacSha256SignerTests
 {

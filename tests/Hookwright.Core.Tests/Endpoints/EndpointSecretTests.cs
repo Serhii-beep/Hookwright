@@ -1,6 +1,5 @@
 ﻿using Hookwright.Core.Endpoints;
-using Hookwright.Core.Events;
-using Hookwright.Core.Subscribers;
+using Hookwright.Signing;
 
 namespace Hookwright.Core.Tests.Endpoints;
 

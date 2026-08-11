@@ -1,6 +1,4 @@
 ﻿using Hookwright.Core.Deliveries;
-using Hookwright.Core.Endpoints;
-using Hookwright.Core.Events;
 
 namespace Hookwright.Core.Tests.Deliveries;
 

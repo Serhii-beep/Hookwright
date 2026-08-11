@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 
-namespace Hookwright.Core.Signing;
+namespace Hookwright.Signing;
 
 /// <summary>
 /// A signing key in the text format: <c>whsec_</c> followed by the

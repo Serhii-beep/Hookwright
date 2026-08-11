@@ -2,9 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-using Hookwright.Core.Endpoints;
-
-namespace Hookwright.Core.Signing;
+namespace Hookwright.Signing;
 
 /// <summary>
 /// The HMAC-SHA256 over <c>{id}.{timestamp}.{payload}</c>,

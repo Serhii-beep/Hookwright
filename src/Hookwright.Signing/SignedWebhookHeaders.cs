@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace Hookwright.Core.Signing;
+namespace Hookwright.Signing;
 
 /// <summary>
 /// The headers the accompany a signed webhook.

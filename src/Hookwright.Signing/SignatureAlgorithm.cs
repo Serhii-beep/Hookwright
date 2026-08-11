@@ -1,4 +1,4 @@
-﻿namespace Hookwright.Core.Endpoints;
+﻿namespace Hookwright.Signing;
 
 /// <summary>
 /// The scheme used to sign outgoing webhooks.

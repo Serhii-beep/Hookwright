@@ -1,9 +1,7 @@
 ﻿using System.Globalization;
 using System.Text;
 
-using Hookwright.Core.Signing;
-
-namespace Hookwright.Core.Tests.Signing;
+namespace Hookwright.Signing.Tests;
 
 public sealed class SignedWebhookHeadersTests
 {

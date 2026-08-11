@@ -5,4 +5,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Hookwright.Core.Tests/Hookwright.Core.Tests.csproj" />
   </Folder>
+  <Project Path="src/Hookwright.Signing/Hookwright.Signing.csproj" Id="fa5613df-ec25-4e60-b478-c6f41282541a" />
+  <Project Path="tests/Hookwright.Signing.Tests/Hookwright.Signing.Tests.csproj" Id="da40eab5-3f13-4a31-899a-c891c47c972c" />
 </Solution>

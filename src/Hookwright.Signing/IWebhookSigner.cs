@@ -1,6 +1,4 @@
-﻿using Hookwright.Core.Endpoints;
-
-namespace Hookwright.Core.Signing;
+﻿namespace Hookwright.Signing;
 
 /// <summary>
 /// Produces a webhook signature over a message

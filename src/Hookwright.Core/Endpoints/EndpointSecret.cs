@@ -1,4 +1,6 @@
-﻿namespace Hookwright.Core.Endpoints;
+﻿using Hookwright.Signing;
+
+namespace Hookwright.Core.Endpoints;
 
 /// <summary>
 /// A signing key belonging to an endpoint, valid over the half-open interval
