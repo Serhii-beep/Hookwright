@@ -46,7 +46,7 @@ reasons they cannot address:
   ordered delivery partitioned by a key you choose.
 - **Sign** — [Standard Webhooks](https://www.standardwebhooks.com/) compliant out of the box
   (`webhook-id` / `webhook-timestamp` / `webhook-signature`, HMAC-SHA256, `whsec_` secrets), so your
-  consumers can verify with any existing library in any language. Optional Ed25519.
+  consumers can verify with any existing library in any language.
 - **Expose** — an embeddable self-serve portal your customers use to register endpoints, inspect
   every request and response, and retry failures — without opening a support ticket, and without
   knowing Hookwright exists.
