@@ -96,4 +96,35 @@ public sealed class HmacSha256SignerTests
     {
         Should.Throw<ArgumentException>(() => Signer.Sign(messageId!, Timestamp, [], Parse(Secret)));
     }
+
+    [Fact]
+    public void Verify_GivenItsOwnSignature_ReturnsTrue()
+    {
+        WebhookSecret secret = Parse(Secret);
+        string signature = Signer.Sign(MessageId, Timestamp, _payload, secret);
+
+        Signer.Verify(signature, MessageId, Timestamp, _payload, secret).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Verify_GivenThePublishedVector_ReturnsTrue()
+    {
+        Signer.Verify(Signature, MessageId, Timestamp, _payload, Parse(Secret)).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")]
+    [InlineData("v1,test")]
+    [InlineData("v2,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=")]
+    [InlineData("")]
+    public void Verify_GivenAWrongSignature_ReturnsFalse(string signature)
+    {
+        Signer.Verify(signature, MessageId, Timestamp, _payload, Parse(Secret)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Verify_GivenAnotherKey_ReturnsFalse()
+    {
+        Signer.Verify(Signature, MessageId, Timestamp, _payload, WebhookSecret.Generate()).ShouldBeFalse();
+    }
 }

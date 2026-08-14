@@ -27,4 +27,17 @@ public interface IWebhookSigner
     /// <param name="secret">The signing key.</param>
     /// <returns></returns>
     string Sign(string messageId, long timestampSeconds, ReadOnlySpan<byte> payload, WebhookSecret secret);
+
+    /// <summary>
+    /// Checks one signature against the message it claims to cover.
+    /// </summary>
+    /// <param name="signature">
+    /// A single <c>{version},{base64}</c> signature taken from <c>webhook-signature</c> header.
+    /// </param>
+    /// <param name="messageId">The value sent as <c>webhook-id</c>.</param>
+    /// <param name="timestampSeconds">The value sent as <c>webhook-timestamp</c>.</param>
+    /// <param name="payload">The exact bytes that were transmitted.</param>
+    /// <param name="secret">The ley to check against.</param>
+    /// <returns><see langword="true"/> if the signature is authentic.</returns>
+    bool Verify(string signature, string messageId, long timestampSeconds, ReadOnlySpan<byte> payload, WebhookSecret secret);
 }

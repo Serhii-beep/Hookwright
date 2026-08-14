@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -41,5 +42,21 @@ public sealed class HmacSha256Signer : IWebhookSigner
         hash.GetHashAndReset(mac);
 
         return string.Concat(Version, ",", Convert.ToBase64String(mac));
+    }
+
+    /// <inheritdoc />
+    public bool Verify(string signature, string messageId, long timestampSeconds, ReadOnlySpan<byte> payload, WebhookSecret secret)
+    {
+        ArgumentNullException.ThrowIfNull(signature);
+
+        return ConstantTimeEquals(signature, Sign(messageId, timestampSeconds, payload, secret));
+    }
+
+    private static bool ConstantTimeEquals(string candidate, string reference)
+    {
+        return candidate.Length == reference.Length
+            && CryptographicOperations.FixedTimeEquals(
+                MemoryMarshal.AsBytes(candidate.AsSpan()),
+                MemoryMarshal.AsBytes(reference.AsSpan()));
     }
 }

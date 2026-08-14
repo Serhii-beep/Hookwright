@@ -159,6 +159,16 @@ public sealed class WebhookVerifierTests
     }
 
     [Fact]
+    public void Verify_GivenMoreSignaturesThanTheLimit_FailsWithoutHashing()
+    {
+        SignedWebhookHeaders headers = Sign(Secret());
+        string overflowed = string.Join(' ', Enumerable.Repeat(headers.Signature, WebhookVerifier.MaxSignatures + 1));
+
+        Verifier.Verify(headers.Id, headers.Timestamp, overflowed, Payload, [Secret()], SignedAt)
+            .Failure.ShouldBe(WebhookVerificationFailure.TooManySignatures);
+    }
+
+    [Fact]
     public void Constructor_GivenANegativeTolerance_Throws()
     {
         Should.Throw<ArgumentOutOfRangeException>(() => new WebhookVerifier(Signer, TimeSpan.FromSeconds(-1)));

@@ -1,6 +1,4 @@
 ﻿using System.Globalization;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 
 namespace Hookwright.Signing;
 
@@ -10,6 +8,11 @@ namespace Hookwright.Signing;
 /// </summary>
 public sealed class WebhookVerifier
 {
+    /// <summary>
+    /// Most signatures a single header may carry.
+    /// </summary>
+    public const int MaxSignatures = 10;
+
     /// <summary>
     /// How far the signing timestamp may differ from now. Default is 5 minutes.
     /// </summary>
@@ -103,7 +106,14 @@ public sealed class WebhookVerifier
             return WebhookVerificationResult.Failed(WebhookVerificationFailure.TimestampInFuture);
         }
 
-        return Matches(messageId, seconds, signature, payload, secrets)
+        string[] candidates = signature.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (candidates.Length > MaxSignatures)
+        {
+            return WebhookVerificationResult.Failed(WebhookVerificationFailure.TooManySignatures);
+        }
+
+        return Matches(messageId, seconds, candidates, payload, secrets)
             ? WebhookVerificationResult.Success
             : WebhookVerificationResult.Failed(WebhookVerificationFailure.SignatureMismatch);
     }
@@ -178,36 +188,21 @@ public sealed class WebhookVerifier
     private bool Matches(
         string messageId,
         long seconds,
-        string signature,
+        string[] candidates,
         ReadOnlySpan<byte> payload,
         IReadOnlyList<WebhookSecret> secrets)
     {
-        string[] expected = new string[secrets.Count];
-
-        for (int i = 0; i < secrets.Count; i++)
-        {
-            expected[i] = _signer.Sign(messageId, seconds, payload, secrets[i]);
-        }
-
         bool matched = false;
 
-        foreach (string candidate in signature.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string candidate in candidates)
         {
-            foreach (string reference in expected)
+            foreach (WebhookSecret secret in secrets)
             {
                 // Non short-circuiting so exit doesn't leak a timing info
-                matched |= ConstantTimeEquals(candidate, reference);
+                matched |= _signer.Verify(candidate, messageId, seconds, payload, secret);
             }
         }
 
         return matched;
-    }
-
-    private static bool ConstantTimeEquals(string candidate, string reference)
-    {
-        return candidate.Length == reference.Length
-            && CryptographicOperations.FixedTimeEquals(
-                MemoryMarshal.AsBytes(candidate.AsSpan()),
-                MemoryMarshal.AsBytes(reference.AsSpan()));
     }
 }

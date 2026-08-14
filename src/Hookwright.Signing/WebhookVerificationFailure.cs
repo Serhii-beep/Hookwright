@@ -43,5 +43,10 @@ public enum WebhookVerificationFailure
     /// <summary>
     /// No supplied signature matched any configured key.
     /// </summary>
-    SignatureMismatch
+    SignatureMismatch,
+
+    /// <summary>
+    /// The signature header carried more signatures than will ever be legitimate.
+    /// </summary>
+    TooManySignatures
 }
