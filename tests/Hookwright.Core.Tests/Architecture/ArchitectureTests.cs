@@ -12,6 +12,7 @@ namespace Hookwright.Core.Tests.Architecture;
 public sealed class ArchitectureTests
 {
     private const string IdentifiersNamespace = "Hookwright.Core.Identifiers";
+    private const string ConfigurationNamespace = "Hookwright.Core.Configuration";
 
     private static readonly Assembly CoreAssembly = typeof(Subscriber).Assembly;
     private static readonly Assembly SigningAssembly = typeof(WebhookSecret).Assembly;
@@ -80,7 +81,7 @@ public sealed class ArchitectureTests
     {
         return candidate is not null
             && candidate.StartsWith("Hookwright.Core.", StringComparison.Ordinal)
-            && candidate != IdentifiersNamespace;
+            && candidate is not (IdentifiersNamespace or ConfigurationNamespace);
     }
 
     private static bool IsBaseClassLibrary(string? name)
