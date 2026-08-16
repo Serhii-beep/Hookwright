@@ -1,7 +1,7 @@
 ﻿namespace Hookwright.Core.Deliveries;
 
 /// <summary>
-/// Deicdes the fate of a delivery from the outcome of its latest attempt.
+/// Decides the fate of a delivery from the outcome of its latest attempt.
 /// </summary>
 public interface IRetryPolicy
 {
@@ -17,6 +17,6 @@ public interface IRetryPolicy
     /// comes from <c>Retry-After</c>.
     /// </param>
     /// <param name="now">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
-    /// <returns></returns>
+    /// <returns>What should happen to the delivery next.</returns>
     RetryDecision Decide(AttemptOutcome outcome, int completedAttempts, TimeSpan? requestedDelay, DateTimeOffset now);
 }

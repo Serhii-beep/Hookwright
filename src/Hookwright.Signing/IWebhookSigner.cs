@@ -25,7 +25,7 @@ public interface IWebhookSigner
     /// The exact bytes that will be transmitted.
     /// </param>
     /// <param name="secret">The signing key.</param>
-    /// <returns></returns>
+    /// <returns>The signature, as <c>{version},{base64}</c>.</returns>
     string Sign(string messageId, long timestampSeconds, ReadOnlySpan<byte> payload, WebhookSecret secret);
 
     /// <summary>

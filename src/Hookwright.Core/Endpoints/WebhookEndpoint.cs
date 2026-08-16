@@ -266,7 +266,7 @@ public sealed class WebhookEndpoint
     /// Resumes delivery. The failure streak is cleared so a previously failing endpoint
     /// starts from a clean state rather than immediately tripping the breaker again.
     /// </summary>
-    /// <param name="now"></param>
+    /// <param name="now">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
     public void Enable(DateTimeOffset now)
     {
         Health = EndpointHealth.Healthy;

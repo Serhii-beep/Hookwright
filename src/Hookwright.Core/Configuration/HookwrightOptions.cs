@@ -16,7 +16,7 @@ public sealed class HookwrightOptions
     public RetryOptions Retry { get; } = new();
 
     /// <summary>
-    /// What is accepted at pucblish time, and where deliveries may go.
+    /// What is accepted at publish time, and where deliveries may go.
     /// </summary>
     public SecurityOptions Security { get; } = new();
 

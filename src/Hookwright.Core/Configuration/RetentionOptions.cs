@@ -55,7 +55,7 @@ public sealed class RetentionOptions
         validator.Require(
             ErrorDetailLength <= DeliveryAttempt.MaxErrorDetailLength,
             $"{nameof(ErrorDetailLength)} ({ErrorDetailLength}) must not exceed " +
-            $"{DeliveryAttempt.MaxErrorDetailLength}, the structural maximum the attemp record enforces.");
+            $"{DeliveryAttempt.MaxErrorDetailLength}, the structural maximum the attempt record enforces.");
 
         return validator.Errors;
     }

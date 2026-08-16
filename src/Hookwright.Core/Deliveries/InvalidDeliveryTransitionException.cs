@@ -28,7 +28,7 @@ public sealed class InvalidDeliveryTransitionException : InvalidOperationExcepti
     /// <summary>
     /// Creates the exception with a specific message.
     /// </summary>
-    /// <param name="message"></param>
+    /// <param name="message">Describes the transition that was refused.</param>
     public InvalidDeliveryTransitionException(string message)
         : base(message)
     { }
@@ -36,8 +36,8 @@ public sealed class InvalidDeliveryTransitionException : InvalidOperationExcepti
     /// <summary>
     /// Creates the exception with a specific message and cause.
     /// </summary>
-    /// <param name="message"></param>
-    /// <param name="innerException"></param>
+    /// <param name="message">Describes the transition that was refused.</param>
+    /// <param name="innerException">The underlying cause.</param>
     public InvalidDeliveryTransitionException(string message, Exception innerException)
         : base(message, innerException)
     { }

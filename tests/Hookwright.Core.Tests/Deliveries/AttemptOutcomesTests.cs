@@ -60,7 +60,7 @@ public sealed class AttemptOutcomesTests
         AttemptOutcome outcome = AttemptOutcomes.FromStatusCode(410);
 
         outcome.ShouldBe(AttemptOutcome.Gone);
-        AttemptOutcomes.RetiresEdnpoint(outcome).ShouldBeTrue();
+        AttemptOutcomes.RetiresEndpoint(outcome).ShouldBeTrue();
         AttemptOutcomes.IsRetryable(outcome).ShouldBeFalse();
     }
 
@@ -107,7 +107,7 @@ public sealed class AttemptOutcomesTests
     {
         foreach (AttemptOutcome outcome in Enum.GetValues<AttemptOutcome>())
         {
-            AttemptOutcomes.RetiresEdnpoint(outcome)
+            AttemptOutcomes.RetiresEndpoint(outcome)
                 .ShouldBe(outcome is AttemptOutcome.Gone, outcome.ToString());
         }
     }

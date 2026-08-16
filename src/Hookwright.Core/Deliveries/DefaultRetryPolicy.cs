@@ -57,7 +57,7 @@ public sealed class DefaultRetryPolicy : IRetryPolicy
             return new RetryDecision.Succeeded();
         }
 
-        if (AttemptOutcomes.RetiresEdnpoint(outcome))
+        if (AttemptOutcomes.RetiresEndpoint(outcome))
         {
             return new RetryDecision.RetireEndpoint();
         }

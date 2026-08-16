@@ -54,9 +54,9 @@ public static class AttemptOutcomes
     /// <summary>
     /// Whether this outcome means the endpoint itself should be retired.
     /// </summary>
-    /// <param name="outcome"></param>
-    /// <returns></returns>
-    public static bool RetiresEdnpoint(AttemptOutcome outcome)
+    /// <param name="outcome">The outcome to classify.</param>
+    /// <returns><see langword="true"/> when the endpoint asked to stop receiving events.</returns>
+    public static bool RetiresEndpoint(AttemptOutcome outcome)
     {
         return outcome is AttemptOutcome.Gone;
     }

@@ -13,6 +13,7 @@ public sealed class ArchitectureTests
 {
     private const string IdentifiersNamespace = "Hookwright.Core.Identifiers";
     private const string ConfigurationNamespace = "Hookwright.Core.Configuration";
+    private const string StorageNamespace = "Hookwright.Core.Storage";
 
     private static readonly Assembly CoreAssembly = typeof(Subscriber).Assembly;
     private static readonly Assembly SigningAssembly = typeof(WebhookSecret).Assembly;
@@ -24,7 +25,7 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Core_Always_HasNotThirdPartyDependency()
+    public void Core_Always_HasNoThirdPartyDependency()
     {
         Outsiders(CoreAssembly, "Hookwright.Signing").ShouldBeEmpty();
     }
@@ -81,7 +82,7 @@ public sealed class ArchitectureTests
     {
         return candidate is not null
             && candidate.StartsWith("Hookwright.Core.", StringComparison.Ordinal)
-            && candidate is not (IdentifiersNamespace or ConfigurationNamespace);
+            && candidate is not (IdentifiersNamespace or ConfigurationNamespace or StorageNamespace);
     }
 
     private static bool IsBaseClassLibrary(string? name)

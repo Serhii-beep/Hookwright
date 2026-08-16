@@ -123,7 +123,7 @@ public sealed class EventType
     /// <summary>
     /// Updates the description.
     /// </summary>
-    /// <param name="description"></param>
+    /// <param name="description">Human-readable label, or <see langword="null"/> to clear it.</param>
     public void Describe(string? description)
     {
         Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
@@ -132,7 +132,7 @@ public sealed class EventType
     /// <summary>
     /// Attaches or clears the JSON Schema used to validate payloads.
     /// </summary>
-    /// <param name="schemaJson"></param>
+    /// <param name="schemaJson">The JSON Schema document, or <see langword="null"/> to clear it.</param>
     public void SetSchema(string? schemaJson)
     {
         SchemaJson = string.IsNullOrWhiteSpace(schemaJson) ? null : schemaJson;

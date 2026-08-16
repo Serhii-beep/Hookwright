@@ -3,7 +3,7 @@
 namespace Hookwright.Core.Events;
 
 /// <summary>
-/// An immutable record of something that happened, adressed to one subscriber.
+/// An immutable record of something that happened, addressed to one subscriber.
 /// Exists independently of any attempt to deliver it, which is what allows a consumer
 /// that was offline past the delivery retry window to recover events by paging the log.
 /// </summary>

@@ -120,8 +120,8 @@ public sealed class Delivery
     /// Whether this delivery is held by a lease that has lapsed, meaning the worker
     /// holding it has almost certainly died and the work should be returned to the queue.
     /// </summary>
-    /// <param name="instant"></param>
-    /// <returns></returns>
+    /// <param name="instant">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
+    /// <returns><see langword="true"/> when the work should be returned to the queue.</returns>
     public bool IsLeaseExpired(DateTimeOffset instant)
     {
         return State is DeliveryState.InFlight && LeaseExpiresAt is { } expiry && expiry <= instant;

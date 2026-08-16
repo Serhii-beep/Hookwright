@@ -3,7 +3,7 @@
 namespace Hookwright.Core.Configuration;
 
 /// <summary>
-/// What is accepted at pucblish time, and where deliveries are allowed to go.
+/// What is accepted at publish time, and where deliveries are allowed to go.
 /// </summary>
 public sealed class SecurityOptions
 {
