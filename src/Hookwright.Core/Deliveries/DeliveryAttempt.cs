@@ -21,6 +21,11 @@ public sealed class DeliveryAttempt
     /// </summary>
     public const int MaxWorkerIdLength = 200;
 
+    /// <summary>
+    /// Most response headers retained on one attempt.
+    /// </summary>
+    public const int MaxResponseHeaders = 50;
+
     private readonly Dictionary<string, string> _responseHeaders = new(StringComparer.OrdinalIgnoreCase);
 
     private DeliveryAttempt(
@@ -83,7 +88,7 @@ public sealed class DeliveryAttempt
     public string? ResponseBodySnippet { get; }
 
     /// <summary>
-    /// Response headers retained for diagnostics.
+    /// Response headers retained for diagnostics, at most <see cref="MaxResponseHeaders"/>.
     /// </summary>
     public IReadOnlyDictionary<string, string> ResponseHeaders => _responseHeaders;
 
@@ -134,6 +139,11 @@ public sealed class DeliveryAttempt
         {
             foreach ((string name, string value) in responseHeaders)
             {
+                if (attempt._responseHeaders.Count == MaxResponseHeaders)
+                {
+                    break;
+                }
+
                 attempt._responseHeaders[name] = value;
             }
         }

@@ -19,7 +19,7 @@ public sealed class EndpointRegistration
     public WebhookEndpoint Endpoint { get; }
 
     /// <summary>
-    /// The keys endpoint starts with. Always at least one.
+    /// The keys the endpoint starts with. Always at least one.
     /// </summary>
     public IReadOnlyList<EndpointSecret> Secrets { get; }
 
@@ -28,7 +28,7 @@ public sealed class EndpointRegistration
     /// </summary>
     /// <param name="endpoint">The endpoint being registered.</param>
     /// <param name="secrets">
-    /// The keys endpoint starts with.
+    /// The keys the endpoint starts with.
     /// </param>
     /// <exception cref="ArgumentException">
     /// No key was supplied, or a key belongs to a different endpoint.

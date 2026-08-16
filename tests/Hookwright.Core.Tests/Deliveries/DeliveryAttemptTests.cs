@@ -73,6 +73,22 @@ public sealed class DeliveryAttemptTests
     }
 
     [Fact]
+    public void FromResponse_GivenMoreHeadersThanTheLimit_KeepsTheLimitWithoutThrowing()
+    {
+        Dictionary<string, string> headers = new(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < DeliveryAttempt.MaxResponseHeaders + 1; i++)
+        {
+            headers[$"x-header-{i}"] = "value";
+        }
+
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            DeliveryId.New(), AttemptOutcome.Succeeded, 200, "ok", headers, Now, Duration, Worker);
+
+        attempt.ResponseHeaders.Count.ShouldBe(DeliveryAttempt.MaxResponseHeaders);
+    }
+
+    [Fact]
     public void FromFailure_GivenANegativeDuration_Throws()
     {
         Should.Throw<ArgumentOutOfRangeException>(() => DeliveryAttempt.FromFailure(
