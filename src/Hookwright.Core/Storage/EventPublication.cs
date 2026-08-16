@@ -28,7 +28,7 @@ public sealed class EventPublication
     /// <summary>
     /// Bundles an event with its deliveries.
     /// </summary>
-    /// <param name="webhookEvent">The vent being published.</param>
+    /// <param name="webhookEvent">The event being published.</param>
     /// <param name="deliveries">
     /// One delivery per endpoint whose filter matched. May be empty.
     /// </param>

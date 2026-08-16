@@ -1,7 +1,7 @@
 ﻿namespace Hookwright.Core.Storage;
 
 /// <summary>
-/// The ppublisher's view of storage.
+/// The publisher's view of storage.
 /// </summary>
 public interface IWebhookEventStore
 {
