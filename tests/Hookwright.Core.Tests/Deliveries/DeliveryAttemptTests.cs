@@ -49,6 +49,43 @@ public sealed class DeliveryAttemptTests
             DeliveryId.New(), outcome, 200, null, null, Now, Duration, Worker));
     }
 
+    [Fact]
+    public void FromResponse_GivenATooLongHeaderValue_TruncatesIt()
+    {
+        string longValue = new('x', DeliveryAttempt.MaxResponseHeaderValueLength + 1);
+
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            DeliveryId.New(), AttemptOutcome.Succeeded, 200, "ok",
+            new Dictionary<string, string> { ["x-header"] = longValue },
+            Now, Duration, Worker);
+
+        attempt.ResponseHeaders["x-header"].Length.ShouldBe(DeliveryAttempt.MaxResponseHeaderValueLength);
+    }
+
+    [Fact]
+    public void FromResponse_GivenAnEmptyHeaderValue_KeepsTheHeader()
+    {
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            DeliveryId.New(), AttemptOutcome.Succeeded, 200, "ok",
+            new Dictionary<string, string> { ["x-header"] = string.Empty },
+            Now, Duration, Worker);
+
+        attempt.ResponseHeaders["x-header"].ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void FromResponse_GivenATooLongHeaderName_DropsThatHeader()
+    {
+        string longName = new('x', DeliveryAttempt.MaxResponseHeaderNameLength + 1);
+
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            DeliveryId.New(), AttemptOutcome.Succeeded, 200, "ok",
+            new Dictionary<string, string> { [longName] = "value", ["x-header"] = "another_value" },
+            Now, Duration, Worker);
+
+        attempt.ResponseHeaders.ShouldHaveSingleItem().Key.ShouldBe("x-header");
+    }
+
     [Theory]
     [InlineData(AttemptOutcome.Succeeded)]
     [InlineData(AttemptOutcome.Rejected)]

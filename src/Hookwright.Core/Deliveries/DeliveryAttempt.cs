@@ -26,6 +26,16 @@ public sealed class DeliveryAttempt
     /// </summary>
     public const int MaxResponseHeaders = 50;
 
+    /// <summary>
+    /// Longest response header value retained.
+    /// </summary>
+    public const int MaxResponseHeaderValueLength = 256;
+
+    /// <summary>
+    /// Longest response header name retained.
+    /// </summary>
+    public const int MaxResponseHeaderNameLength = 128;
+
     private readonly Dictionary<string, string> _responseHeaders = new(StringComparer.OrdinalIgnoreCase);
 
     private DeliveryAttempt(
@@ -88,7 +98,8 @@ public sealed class DeliveryAttempt
     public string? ResponseBodySnippet { get; }
 
     /// <summary>
-    /// Response headers retained for diagnostics, at most <see cref="MaxResponseHeaders"/>.
+    /// Response headers retained for diagnostics, at most <see cref="MaxResponseHeaders"/>,
+    /// each truncated to <see cref="MaxResponseHeaderValueLength"/>.
     /// </summary>
     public IReadOnlyDictionary<string, string> ResponseHeaders => _responseHeaders;
 
@@ -144,7 +155,14 @@ public sealed class DeliveryAttempt
                     break;
                 }
 
-                attempt._responseHeaders[name] = value;
+                if (name.Length > MaxResponseHeaderNameLength)
+                {
+                    continue;
+                }
+
+                attempt._responseHeaders[name] = value.Length <= MaxResponseHeaderValueLength
+                    ? value
+                    : value[..MaxResponseHeaderValueLength];
             }
         }
 
