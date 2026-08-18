@@ -1,4 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
+using Hookwright.Core.Events;
+using Hookwright.Core.Subscribers;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace Hookwright.EntityFrameworkCore;
 
@@ -31,5 +36,19 @@ public class HookwrightDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(HookwrightDbContext).Assembly);
+        modelBuilder.UseSnakeCaseColumnNames();
+    }
+
+    /// <inheritdoc />
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        configurationBuilder.Properties<SubscriberId>().HaveConversion<PrefixedIdConverter<SubscriberId>>();
+        configurationBuilder.Properties<WebhookEndpointId>().HaveConversion<PrefixedIdConverter<WebhookEndpointId>>();
+        configurationBuilder.Properties<EndpointSecretId>().HaveConversion<PrefixedIdConverter<EndpointSecretId>>();
+        configurationBuilder.Properties<WebhookEventId>().HaveConversion<PrefixedIdConverter<WebhookEventId>>();
+        configurationBuilder.Properties<DeliveryId>().HaveConversion<PrefixedIdConverter<DeliveryId>>();
+        configurationBuilder.Properties<DeliveryAttemptId>().HaveConversion<PrefixedIdConverter<DeliveryAttemptId>>();
     }
 }
