@@ -1,10 +1,12 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hookwright.Core/Hookwright.Core.csproj" />
+    <Project Path="src/Hookwright.EntityFrameworkCore/Hookwright.EntityFrameworkCore.csproj" Id="c22a945e-6be6-4318-803a-9586d7fb9649" />
+    <Project Path="src/Hookwright.Signing/Hookwright.Signing.csproj" Id="fa5613df-ec25-4e60-b478-c6f41282541a" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hookwright.Core.Tests/Hookwright.Core.Tests.csproj" />
+    <Project Path="tests/Hookwright.EntityFrameworkCore.Tests/Hookwright.EntityFrameworkCore.Tests.csproj" Id="a8efe7b1-acc0-4e54-8faa-5b5507ad332f" />
+    <Project Path="tests/Hookwright.Signing.Tests/Hookwright.Signing.Tests.csproj" Id="da40eab5-3f13-4a31-899a-c891c47c972c" />
   </Folder>
-  <Project Path="src/Hookwright.Signing/Hookwright.Signing.csproj" Id="fa5613df-ec25-4e60-b478-c6f41282541a" />
-  <Project Path="tests/Hookwright.Signing.Tests/Hookwright.Signing.Tests.csproj" Id="da40eab5-3f13-4a31-899a-c891c47c972c" />
 </Solution>
