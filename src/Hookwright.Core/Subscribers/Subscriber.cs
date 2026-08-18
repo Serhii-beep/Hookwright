@@ -1,7 +1,7 @@
 ﻿namespace Hookwright.Core.Subscribers;
 
 /// <summary>
-/// One of your customers: the tenant that owns endpoits and receives your events.
+/// One of your customers: the tenant that owns endpoints and receives your events.
 /// </summary>
 public sealed class Subscriber
 {
@@ -49,10 +49,10 @@ public sealed class Subscriber
     /// When this subscriber was registered.
     /// </summary>
     public DateTimeOffset CreatedAt { get; }
+
     /// <summary>
     /// When this subscriber was disabled, or <see langword="null"/> while active.
     /// </summary>
-
     public DateTimeOffset? DisabledAt { get; private set; }
 
     /// <summary>
