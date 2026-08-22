@@ -9,11 +9,6 @@ public sealed class SubscriberMappingTests
 {
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private static HookwrightDbContext CreateContext(SqliteConnection connection)
-    {
-        return new HookwrightDbContext(new DbContextOptionsBuilder<HookwrightDbContext>().UseSqlite(connection).Options);
-    }
-
     [Fact]
     public async Task Subscriber_Always_RoundTripsThroughTheDatabase()
     {
@@ -23,12 +18,12 @@ public sealed class SubscriberMappingTests
         Subscriber subscriber = Subscriber.Create("org_test", "org_test_name", Now);
         subscriber.Disable(Now.AddDays(1));
 
-        await using HookwrightDbContext write = CreateContext(connection);
+        await using HookwrightDbContext write = TestDatabase.CreateContext(connection);
         await write.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         write.Add(subscriber);
         await write.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await using HookwrightDbContext read = CreateContext(connection);
+        await using HookwrightDbContext read = TestDatabase.CreateContext(connection);
         Subscriber loaded = await read.Set<Subscriber>().SingleAsync(TestContext.Current.CancellationToken);
 
         loaded.Id.ShouldBe(subscriber.Id);
