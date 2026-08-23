@@ -18,4 +18,12 @@ internal static class TestDatabase
         return new HookwrightDbContext(
             new DbContextOptionsBuilder<HookwrightDbContext>().UseSqlite(connection).Options);
     }
+
+    internal static async Task<HookwrightDbContext> CreateSchemaAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        HookwrightDbContext context = CreateContext(connection);
+        await context.Database.EnsureCreatedAsync(cancellationToken);
+
+        return context;
+    }
 }
