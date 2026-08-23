@@ -59,6 +59,48 @@ public sealed class EfDeliveryLeaseStoreTests
     }
 
     [Fact]
+    public async Task ReclaimExpiredLeasesAsync_GivenALapsedLease_ReturnsItToTheQueue()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        await SeedClaimedAsync(context);
+
+        int reclaimed = await new TestLeaseStore(context)
+            .ReclaimExpiredLeasesAsync(Now.AddMinutes(5), TestContext.Current.CancellationToken);
+
+        reclaimed.ShouldBe(1);
+
+        await using HookwrightDbContext reader = TestDatabase.CreateContext(connection);
+        Delivery loaded = await reader.Set<Delivery>().SingleAsync(TestContext.Current.CancellationToken);
+
+        loaded.State.ShouldBe(DeliveryState.Pending);
+        loaded.NextAttemptAt.ShouldBe(Now.AddMinutes(5));
+        loaded.LeaseOwner.ShouldBeNull();
+        loaded.LeaseExpiresAt.ShouldBeNull();
+
+        loaded.AttemptCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReclaimExpiredLeasesAsync_GivenALeaseStillHeld_LeavesItAlone()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        await SeedClaimedAsync(context);
+
+        int reclaimed = await new TestLeaseStore(context)
+            .ReclaimExpiredLeasesAsync(Now.AddSeconds(30), TestContext.Current.CancellationToken);
+
+        reclaimed.ShouldBe(0);
+
+        await using HookwrightDbContext reader = TestDatabase.CreateContext(connection);
+        (await reader.Set<Delivery>().SingleAsync(TestContext.Current.CancellationToken))
+            .State.ShouldBe(DeliveryState.InFlight);
+    }
+
+    [Fact]
     public async Task CompleteAsync_GivenALapsedLease_RecordsTheAttemptButNotTheStateChange()
     {
         await using SqliteConnection connection = TestDatabase.Open();

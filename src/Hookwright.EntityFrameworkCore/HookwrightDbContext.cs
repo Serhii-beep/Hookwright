@@ -51,5 +51,7 @@ public class HookwrightDbContext : DbContext
         configurationBuilder.Properties<DeliveryId>().HaveConversion<PrefixedIdConverter<DeliveryId>>();
         configurationBuilder.Properties<DeliveryAttemptId>().HaveConversion<PrefixedIdConverter<DeliveryAttemptId>>();
         configurationBuilder.Properties<TimeSpan>().HaveConversion<DurationConverter>();
+
+        ProviderConventions.Apply(configurationBuilder, Database.ProviderName);
     }
 }
