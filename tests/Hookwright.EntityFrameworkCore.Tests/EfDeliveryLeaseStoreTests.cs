@@ -32,6 +32,14 @@ public sealed class EfDeliveryLeaseStoreTests
         {
             throw new NotSupportedException();
         }
+
+        public Task<IReadOnlyList<ClaimedDelivery>> ProjectAsync(
+            IReadOnlyList<DeliveryId> deliveryIds,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            return ProjectClaimedAsync(deliveryIds, now, cancellationToken);
+        }
     }
 
     [Fact]
@@ -169,6 +177,77 @@ public sealed class EfDeliveryLeaseStoreTests
         endpoint.DisabledReason.ShouldBe(DeliveryCompletion.RetirementReason);
     }
 
+    [Fact]
+    public async Task ProjectClaimedAsync_Always_GathersEverythingOneRequestNeeds()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        (Delivery delivery, ClaimedDelivery _) = await SeedClaimedAsync(context);
+
+        IReadOnlyList<ClaimedDelivery> claimed = await new TestLeaseStore(context)
+            .ProjectAsync([delivery.Id], Now, TestContext.Current.CancellationToken);
+
+        ClaimedDelivery only = claimed.ShouldHaveSingleItem();
+        only.DeliveryId.ShouldBe(delivery.Id);
+        only.AttemptCount.ShouldBe(1);
+        only.LeaseExpiresAt.ShouldBe(Now.AddSeconds(60));
+        only.EventType.ShouldBe("order.created");
+        only.Payload.ShouldBe("{}");
+        only.Url.ShouldBe(new Uri("https://example.com/"));
+        only.Secrets.ShouldHaveSingleItem().ProtectedKey.ShouldBe("protected-key");
+    }
+
+    [Fact]
+    public async Task ProjectClaimedAsync_DuringARotation_CarriesBothLiveKeys()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        (Delivery delivery, ClaimedDelivery claimed) = await SeedClaimedAsync(context);
+
+        EndpointSecret retiring = await context.Set<EndpointSecret>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        retiring.Retire(Now.AddHours(24));
+        context.Add(EndpointSecret.Create(
+            claimed.EndpointId, "protected-new", SignatureAlgorithm.HmacSha256, Now.AddHours(1)));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IReadOnlyList<ClaimedDelivery> projected = await new TestLeaseStore(context)
+            .ProjectAsync([delivery.Id], Now.AddHours(2), TestContext.Current.CancellationToken);
+
+        projected.ShouldHaveSingleItem().Secrets.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ProjectClaimedAsync_GivenAKeyRetiredInThePast_LeavesItOut()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        (Delivery delivery, ClaimedDelivery _) = await SeedClaimedAsync(context);
+
+        EndpointSecret expired = await context.Set<EndpointSecret>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        expired.Retire(Now.AddMinutes(1));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IReadOnlyList<ClaimedDelivery> projected = await new TestLeaseStore(context)
+            .ProjectAsync([delivery.Id], Now.AddHours(1), TestContext.Current.CancellationToken);
+
+        projected.ShouldHaveSingleItem().Secrets.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProjectClaimedAsync_GivenNothing_ReturnsNothing()
+    {
+        await using SqliteConnection connection = TestDatabase.Open();
+        await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
+
+        (await new TestLeaseStore(context).ProjectAsync([], Now, TestContext.Current.CancellationToken))
+            .ShouldBeEmpty();
+    }
+
     private static DeliveryAttempt Attempt(DeliveryId deliveryId, AttemptOutcome outcome, int status = 200)
     {
         return DeliveryAttempt.FromResponse(
@@ -186,7 +265,7 @@ public sealed class EfDeliveryLeaseStoreTests
         delivery.Claim("web-01:4242:a1b2c3", Now.AddSeconds(60), Now);
 
         context.AddRange(subscriber, endpoint, published, delivery);
-        context.Add(EndpointSecret.Create(endpoint.Id, "protected-keyu", SignatureAlgorithm.HmacSha256, Now));
+        context.Add(EndpointSecret.Create(endpoint.Id, "protected-key", SignatureAlgorithm.HmacSha256, Now));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         ClaimedDelivery claimed = new()
