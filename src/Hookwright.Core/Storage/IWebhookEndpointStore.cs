@@ -14,7 +14,7 @@ public interface IWebhookEndpointStore
     /// <param name="registration">The endpoint and its keys.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <remarks>
-    /// Self-committing, unlike <see cref="IWebhookEventStore.AppendAsync"/>. Registering
+    /// Self-committing, unlike <see cref="IWebhookEventStore.Append"/>. Registering
     /// an endpoint is not a part of a host's business transaction.
     /// </remarks>
     Task AddAsync(EndpointRegistration registration, CancellationToken cancellationToken);

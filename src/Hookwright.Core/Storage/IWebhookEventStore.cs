@@ -9,8 +9,7 @@ public interface IWebhookEventStore
     /// Stages a publication.
     /// </summary>
     /// <param name="publication">The event and its fan-out.</param>
-    /// <param name="cancellationToken">Cancels the operation.</param>
-    Task AppendAsync(EventPublication publication, CancellationToken cancellationToken);
+    void Append(EventPublication publication);
 
     /// <summary>
     /// Makes everything staged durable.
