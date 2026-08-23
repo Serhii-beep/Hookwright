@@ -1,4 +1,5 @@
 ﻿using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 
 namespace Hookwright.Core.Storage;
 
@@ -7,8 +8,14 @@ namespace Hookwright.Core.Storage;
 /// </summary>
 public sealed class DeliveryCompletion
 {
+    /// <summary>
+    /// Why an endpoint is disabled when <see cref="RetireEndpoint"/> is set.
+    /// </summary>
+    public const string RetirementReason = "The endpoint returned 410 Gone.";
+
     private DeliveryCompletion(
         DeliveryId deliveryId,
+        WebhookEndpointId endpointId,
         DeliveryState state,
         DateTimeOffset? completedAt,
         DateTimeOffset? nextAttemptAt,
@@ -16,6 +23,7 @@ public sealed class DeliveryCompletion
         bool retireEndpoint)
     {
         DeliveryId = deliveryId;
+        EndpointId = endpointId;
         State = state;
         CompletedAt = completedAt;
         NextAttemptAt = nextAttemptAt;
@@ -27,6 +35,11 @@ public sealed class DeliveryCompletion
     /// The delivery this result applies to.
     /// </summary>
     public DeliveryId DeliveryId { get; }
+
+    /// <summary>
+    /// The endpoint this delivery was going to.
+    /// </summary>
+    public WebhookEndpointId EndpointId { get; }
 
     /// <summary>
     /// The state the delivery moves to.
@@ -90,6 +103,7 @@ public sealed class DeliveryCompletion
 
         return new DeliveryCompletion(
             claimed.DeliveryId,
+            claimed.EndpointId,
             outcome.State,
             completedAt,
             outcome.NextAttemptAt,
