@@ -5,7 +5,15 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
+
+  <ItemGroup Label="Test stack">
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
 
   <PropertyGroup Label="Analyzer relaxations">
     <!-- CA1707: underscores in identifiers. Test names read as
@@ -17,4 +25,9 @@
          appears twice in Test Explorer, so URI test inputs are strings. -->
     <NoWarn>$(NoWarn);CA1707;CA2007;CA1054</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
 </Project>

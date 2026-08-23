@@ -15,8 +15,7 @@ updates:
       test-stack:
         patterns:
           - "xunit*"
-          - "Microsoft.NET.Test.Sdk"
-          - "coverlet*"
+          - "Microsoft.Testing.Extensions.*"
   
   - package-ecosystem: github-actions
     directory: /

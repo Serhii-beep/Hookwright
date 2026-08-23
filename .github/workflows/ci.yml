@@ -65,8 +65,9 @@ jobs:
           dotnet test Hookwright.slnx
           --no-build
           --configuration Release
-          --logger "trx;LogFileName=test-results.trx"
-          --collect:"XPlat Code Coverage"
+          --report-trx
+          --coverage
+          --coverage-output-format cobertura
           --results-directory ${{ github.workspace }}/artifacts/test-results
       
       - name: Upload test results
