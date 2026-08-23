@@ -31,7 +31,7 @@ internal sealed class WebhookEventConfiguration : IEntityTypeConfiguration<Webho
             .HasMaxLength(WebhookEvent.MaxIdempotencyKeyLength);
 
         builder.Property<Dictionary<string, string>>("_headers")
-            .HasConversion(new StringDictionaryConverter(), new StringDictionaryComparer())
+            .HasConversion(new HeaderDictionaryConverter(), new HeaderDictionaryComparer())
             .IsRequired();
 
         builder.Ignore(e => e.Headers);

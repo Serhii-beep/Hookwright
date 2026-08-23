@@ -1,13 +1,12 @@
-﻿using System.Runtime.InteropServices;
-using System.Text.Json;
+﻿using System.Text.Json;
 
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Hookwright.EntityFrameworkCore;
 
-internal sealed class StringDictionaryConverter : ValueConverter<Dictionary<string, string>, string>
+internal sealed class HeaderDictionaryConverter : ValueConverter<Dictionary<string, string>, string>
 {
-    public StringDictionaryConverter()
+    public HeaderDictionaryConverter()
         : base(value => Write(value), json => Read(json))
     {
 

@@ -2,9 +2,9 @@
 
 namespace Hookwright.EntityFrameworkCore;
 
-internal sealed class StringDictionaryComparer : ValueComparer<Dictionary<string, string>>
+internal sealed class HeaderDictionaryComparer : ValueComparer<Dictionary<string, string>>
 {
-    public StringDictionaryComparer()
+    public HeaderDictionaryComparer()
         : base(
             (left, right) => AreEqual(left, right),
             value => Hash(value),
