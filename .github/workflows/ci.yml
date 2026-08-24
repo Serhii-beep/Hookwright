@@ -32,6 +32,28 @@ jobs:
       - name: Verify formatting
         run: dotnet format Hookwright.slnx --verify-no-changes
   
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      
+      - name: Restore
+        run: dotnet restore Hookwright.slnx
+      
+      - name: Restore tools
+        run: dotnet tool restore
+      
+      - name: Verify migrations match the model
+        run: >
+          dotnet ef migrations has-pending-model-changes
+          --project src/Hookwright.Sqlite
+          --startup-project tests/Hookwright.Sqlite.Tests
+  
   build:
     name: Build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

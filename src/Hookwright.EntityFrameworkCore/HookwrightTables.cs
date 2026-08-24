@@ -11,6 +11,11 @@ public static class HookwrightTables
     public const string Prefix = "hookwright_";
 
     /// <summary>
+    /// Where EF records which migrations have run.
+    /// </summary>
+    public const string MigrationsHistory = "__" + Prefix + "migrations";
+
+    /// <summary>
     /// Subscribers.
     /// </summary>
     public const string Subscribers = Prefix + "subscribers";

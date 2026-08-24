@@ -1,6 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Hookwright.Sqlite\Hookwright.Sqlite.csproj" />
   </ItemGroup>
 
