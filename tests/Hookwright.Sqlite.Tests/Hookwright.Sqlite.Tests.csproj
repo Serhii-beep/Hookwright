@@ -1,0 +1,7 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hookwright.Sqlite\Hookwright.Sqlite.csproj" />
+  </ItemGroup>
+
+</Project>
