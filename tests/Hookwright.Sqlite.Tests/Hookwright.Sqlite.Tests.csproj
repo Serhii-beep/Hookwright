@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hookwright.Sqlite\Hookwright.Sqlite.csproj" />
+    <ProjectReference Include="..\Hookwright.Store.Conformance\Hookwright.Store.Conformance.csproj" />
   </ItemGroup>
 
 </Project>

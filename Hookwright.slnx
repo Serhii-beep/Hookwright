@@ -10,5 +10,6 @@
     <Project Path="tests/Hookwright.EntityFrameworkCore.Tests/Hookwright.EntityFrameworkCore.Tests.csproj" Id="a8efe7b1-acc0-4e54-8faa-5b5507ad332f" />
     <Project Path="tests/Hookwright.Signing.Tests/Hookwright.Signing.Tests.csproj" Id="da40eab5-3f13-4a31-899a-c891c47c972c" />
     <Project Path="tests/Hookwright.Sqlite.Tests/Hookwright.Sqlite.Tests.csproj" Id="da9f378c-3a4c-4b64-9bdc-b9c24ea1242e" />
+    <Project Path="tests/Hookwright.Store.Conformance/Hookwright.Store.Conformance.csproj" Id="e54d83dd-3216-4845-afe4-1c0736feb6b5" />
   </Folder>
 </Solution>

@@ -441,3 +441,6 @@ dotnet_diagnostic.CA5394.severity = none
 # reads worse than the nesting it avoids.
 [src/Hookwright.Core/Deliveries/RetryDecision.cs]
 dotnet_diagnostic.CA1034.severity = none
+
+[**/*StoreConformance.cs]
+  dotnet_diagnostic.CA2000.severity = none

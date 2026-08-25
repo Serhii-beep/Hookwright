@@ -8,7 +8,6 @@ using Hookwright.Signing;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Hookwright.Sqlite.Tests;
 

@@ -8,7 +8,7 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
-  <ItemGroup Label="Test stack">
+  <ItemGroup Label="Test stack" Condition="'$(IsTestProject)' == 'true'">
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
