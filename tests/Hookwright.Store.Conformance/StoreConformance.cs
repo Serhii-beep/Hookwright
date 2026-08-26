@@ -1,4 +1,6 @@
-﻿using Hookwright.Core.Endpoints;
+﻿using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
+using Hookwright.Core.Events;
 using Hookwright.Core.Storage;
 using Hookwright.Core.Subscribers;
 using Hookwright.Signing;
@@ -38,6 +40,28 @@ public abstract class StoreConformance : IAsyncLifetime
                 endpoint,
                 [EndpointSecret.Create(endpoint.Id, "protected-key", SignatureAlgorithm.HmacSha256, Now)]),
             cancellationToken);
+
+        return endpoint;
+    }
+
+    protected static async Task<WebhookEndpoint> SeedDueDeliveriesAsync(
+        IStoreSession session,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        WebhookEndpoint endpoint = await RegisterEndpointAsync(session, cancellationToken);
+
+        for (int i = 0; i < count; i++)
+        {
+            WebhookEvent published = WebhookEvent.Create(
+                endpoint.SubscriberId, "order.created", $$"""{"index":{{i}}}""", Now);
+
+            session.Events.Append(EventPublication.Create(
+                published,
+                [Delivery.Create(published.Id, endpoint.Id, null, Now.AddSeconds(-i))]));
+        }
+
+        await session.Events.CommitAsync(cancellationToken);
 
         return endpoint;
     }
