@@ -5,8 +5,6 @@ namespace Hookwright.Store.Conformance;
 
 public abstract class SubscriberStoreConformance : StoreConformance
 {
-    private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
-
     protected SubscriberStoreConformance(IStoreHarness harness)
         : base(harness)
     {
