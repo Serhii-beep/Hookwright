@@ -2,12 +2,14 @@
   <Folder Name="/src/">
     <Project Path="src/Hookwright.Core/Hookwright.Core.csproj" />
     <Project Path="src/Hookwright.EntityFrameworkCore/Hookwright.EntityFrameworkCore.csproj" Id="c22a945e-6be6-4318-803a-9586d7fb9649" />
+    <Project Path="src/Hookwright.PostgreSql/Hookwright.PostgreSql.csproj" Id="4305f2d8-2c0b-4d22-a85a-f7f202fb1964" />
     <Project Path="src/Hookwright.Signing/Hookwright.Signing.csproj" Id="fa5613df-ec25-4e60-b478-c6f41282541a" />
     <Project Path="src/Hookwright.Sqlite/Hookwright.Sqlite.csproj" Id="5564c68f-0434-4e1e-9f45-0326444d6e8e" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hookwright.Core.Tests/Hookwright.Core.Tests.csproj" />
     <Project Path="tests/Hookwright.EntityFrameworkCore.Tests/Hookwright.EntityFrameworkCore.Tests.csproj" Id="a8efe7b1-acc0-4e54-8faa-5b5507ad332f" />
+    <Project Path="tests/Hookwright.PostgreSql.Tests/Hookwright.PostgreSql.Tests.csproj" Id="1d2a81ea-771c-4fcf-8e5a-d86f19c01153" />
     <Project Path="tests/Hookwright.Signing.Tests/Hookwright.Signing.Tests.csproj" Id="da40eab5-3f13-4a31-899a-c891c47c972c" />
     <Project Path="tests/Hookwright.Sqlite.Tests/Hookwright.Sqlite.Tests.csproj" Id="da9f378c-3a4c-4b64-9bdc-b9c24ea1242e" />
     <Project Path="tests/Hookwright.Store.Conformance/Hookwright.Store.Conformance.csproj" Id="e54d83dd-3216-4845-afe4-1c0736feb6b5" />

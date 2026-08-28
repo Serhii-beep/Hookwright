@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hookwright.PostgreSql\Hookwright.PostgreSql.csproj" />
+    <ProjectReference Include="..\Hookwright.Store.Conformance\Hookwright.Store.Conformance.csproj" />
+  </ItemGroup>
+
+</Project>
