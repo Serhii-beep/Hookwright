@@ -15,6 +15,13 @@
     <PackageReference Include="Shouldly" />
   </ItemGroup>
 
+  <ItemGroup Label="Container-backed suites" Condition="'$(RequiresDocker)' == 'true'">
+    <AssemblyAttribute Include="Xunit.TraitAttribute">
+      <_Parameter1>Requires</_Parameter1>
+      <_Parameter2>Docker</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <PropertyGroup Label="Analyzer relaxations">
     <!-- CA1707: underscores in identifiers. Test names read as
          Method_Condition_ExpectedResult, which is deliberate. -->

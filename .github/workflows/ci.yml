@@ -61,6 +61,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        include:
+          - os: windows-latest
+            test-args: '--filter-not-trait "Requires=Docker" --ignore-exit-code 8'
     
     steps:
       - uses: actions/checkout@v7
@@ -91,6 +94,7 @@ jobs:
           --coverage
           --coverage-output-format cobertura
           --results-directory ${{ github.workspace }}/artifacts/test-results
+          ${{ matrix.test-args }}
       
       - name: Upload test results
         if: always()
