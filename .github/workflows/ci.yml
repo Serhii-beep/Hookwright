@@ -33,8 +33,12 @@ jobs:
         run: dotnet format Hookwright.slnx --verify-no-changes
   
   migrations:
-    name: Migrations
+    name: Migrations (${{ matrix.provider }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [Sqlite, PostgreSql]
     steps:
       - uses: actions/checkout@v7
 
@@ -51,8 +55,8 @@ jobs:
       - name: Verify migrations match the model
         run: >
           dotnet ef migrations has-pending-model-changes
-          --project src/Hookwright.Sqlite
-          --startup-project tests/Hookwright.Sqlite.Tests
+          --project src/Hookwright.${{ matrix.provider }}
+          --startup-project tests/Hookwright.${{ matrix.provider }}.Tests
   
   build:
     name: Build & test (${{ matrix.os }})
