@@ -231,6 +231,26 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
             .ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task ReclaimExpiredLeasesAsync_GivenAnInstantWithAnOffset_ReclaimsByTheInstant()
+    {
+        await SeedAsync(1);
+
+        await using IStoreSession dying = OpenSession();
+        await dying.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken);
+
+        DateTimeOffset afterTheLease = (Now + Lease + TimeSpan.FromMinutes(1)).ToOffset(TimeSpan.FromHours(-5));
+
+        await using IStoreSession worker = OpenSession();
+        (await worker.Deliveries.ReclaimExpiredLeasesAsync(afterTheLease, TestContext.Current.CancellationToken))
+            .ShouldBe(1);
+
+        await using IStoreSession nextWorker = OpenSession();
+        (await nextWorker.Deliveries.ClaimAsync("web-02:4242:a1b2c3", 10, Lease, afterTheLease, TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem()
+            .LeaseExpiresAt.ShouldBe(afterTheLease + Lease);
+    }
+
     private async Task<WebhookEndpoint> SeedAsync(int count)
     {
         await using IStoreSession session = OpenSession();

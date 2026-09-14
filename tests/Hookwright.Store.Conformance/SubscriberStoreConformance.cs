@@ -42,6 +42,22 @@ public abstract class SubscriberStoreConformance : StoreConformance
     }
 
     [Fact]
+    public async Task AddAsync_GivenAnInstantWithAnOffset_StoresTheSameInstant()
+    {
+        DateTimeOffset createdAt = Now.ToOffset(TimeSpan.FromHours(2));
+
+        await using IStoreSession writer = OpenSession();
+        await writer.Subscribers.AddAsync(
+            Subscriber.Create("test_org", null, createdAt), TestContext.Current.CancellationToken);
+
+        await using IStoreSession reader = OpenSession();
+        Subscriber found = (await reader.Subscribers.FindByExternalIdAsync("test_org", TestContext.Current.CancellationToken))
+            .ShouldNotBeNull();
+
+        found.CreatedAt.ShouldBe(createdAt);
+    }
+
+    [Fact]
     public async Task AddAsync_GivenADuplicateExternalId_Conflicts()
     {
         await using IStoreSession session = OpenSession();
