@@ -1,4 +1,6 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using System.Text.Json;
+
+using Hookwright.Core.Deliveries;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore.Stores;
 
@@ -62,6 +64,41 @@ public sealed class SqlServerDeliveryLeaseStore : EfDeliveryLeaseStore
             [.. taken.Select(DeliveryId.FromGuid)],
             now,
             cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    protected override async Task<int> UpdateDeliveriesAsync(
+        string leaseOwner,
+        IReadOnlyList<DeliveryCompletion> completions,
+        CancellationToken cancellationToken)
+    {
+        string batch = JsonSerializer.Serialize(completions.Select(completion => new
+        {
+            Id = completion.DeliveryId.Value,
+            State = (short)completion.State,
+            completion.NextAttemptAt,
+            completion.CompletedAt
+        }));
+
+        return await Context.Database
+            .ExecuteSqlAsync($"""
+                UPDATE d
+                SET state = v.state,
+                    next_attempt_at = COALESCE(v.next_attempt_at, d.next_attempt_at),
+                    completed_at = v.completed_at,
+                    lease_owner = NULL,
+                    lease_expires_at = NULL
+                FROM hookwright_deliveries AS d
+                INNER JOIN OPENJSON({batch})
+                    WITH (
+                        id uniqueidentifier '$.Id',
+                        state smallint '$.State',
+                        next_attempt_at datetimeoffset '$.NextAttemptAt',
+                        completed_at datetimeoffset '$.CompletedAt') AS v
+                    ON d.id = v.id
+                WHERE d.lease_owner = {leaseOwner}
+            """, cancellationToken)
             .ConfigureAwait(false);
     }
 }
