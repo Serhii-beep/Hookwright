@@ -215,6 +215,42 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
     }
 
     [Fact]
+    public async Task CompleteAsync_GivenABatchOfMixedOutcomes_AppliesEachToItsOwnDelivery()
+    {
+        await SeedAsync(3);
+        DateTimeOffset retryAt = Now.AddMinutes(5);
+
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken);
+        claimed.Count.ShouldBe(3);
+
+        (await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [
+                Completion(claimed[0], new RetryDecision.Succeeded(), Now.AddSeconds(1)),
+                Completion(claimed[1], new RetryDecision.Retry(retryAt), Now.AddSeconds(1), AttemptOutcome.ServerError, 503),
+                Completion(claimed[2], new RetryDecision.Fail(), Now.AddSeconds(1), AttemptOutcome.Rejected, 400)
+            ],
+            TestContext.Current.CancellationToken))
+            .ShouldBe(3);
+
+        await using IStoreSession early = OpenSession();
+        (await early.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, retryAt.AddSeconds(-1), TestContext.Current.CancellationToken))
+            .ShouldBeEmpty();
+
+        await using IStoreSession due = OpenSession();
+        ClaimedDelivery retried = (await due.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, Now.AddHours(1), TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem();
+
+        retried.DeliveryId.ShouldBe(claimed[1].DeliveryId);
+        retried.AttemptCount.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task ReclaimExpiredLeasesAsync_GivenALiveLease_LeavesItAlone()
     {
         await SeedAsync(1);

@@ -37,7 +37,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public virtual async Task<int> CompleteAsync(
+    public async Task<int> CompleteAsync(
         string leaseOwner,
         IReadOnlyList<DeliveryCompletion> completions,
         CancellationToken cancellationToken)
@@ -56,18 +56,11 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
 
         try
         {
-            int applied = 0;
+            int applied = await UpdateDeliveriesAsync(leaseOwner, completions, cancellationToken).ConfigureAwait(false);
 
-            foreach (DeliveryCompletion completion in completions)
+            foreach (DeliveryCompletion completion in completions.Where(candidate => candidate.RetireEndpoint))
             {
-                applied += completion.NextAttemptAt is { } nextAttemptAt
-                    ? await RequeueAsync(completion, nextAttemptAt, leaseOwner, cancellationToken).ConfigureAwait(false)
-                    : await FinishAsync(completion, leaseOwner, cancellationToken).ConfigureAwait(false);
-
-                if (completion.RetireEndpoint)
-                {
-                    await RetireAsync(completion, cancellationToken).ConfigureAwait(false);
-                }
+                await RetireAsync(completion, cancellationToken).ConfigureAwait(false);
             }
 
             Context.AddRange(completions.Select(completion => completion.Attempt));
@@ -102,6 +95,28 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                     .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes each completion to its delivery for ever delivery whose lease
+    /// <paramref name="leaseOwner"/> still holds.
+    /// </summary>
+    /// <returns>How many deliveries were still under the lease and were written.</returns>
+    protected virtual async Task<int> UpdateDeliveriesAsync(
+        string leaseOwner,
+        IReadOnlyList<DeliveryCompletion> completions,
+        CancellationToken cancellationToken)
+    {
+        int applied = 0;
+
+        foreach (DeliveryCompletion completion in completions)
+        {
+            applied += completion.NextAttemptAt is { } nextAttemptAt
+                ? await RequeueAsync(completion, nextAttemptAt, leaseOwner, cancellationToken).ConfigureAwait(false)
+                : await FinishAsync(completion, leaseOwner, cancellationToken).ConfigureAwait(false);
+        }
+
+        return applied;
     }
 
     /// <summary>
@@ -149,7 +164,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                 AttemptCount = row.Delivery.AttemptCount,
                 LeaseExpiresAt = row.Delivery.LeaseExpiresAt
                     ?? throw new InvalidOperationException(
-                        $"Delivery {row.Delivery.Id} was claimed wihtout a lease expiry."),
+                        $"Delivery {row.Delivery.Id} was claimed without a lease expiry."),
                 EventId = row.Event.Id,
                 EventType = row.Event.Type,
                 Payload = row.Event.Payload,
