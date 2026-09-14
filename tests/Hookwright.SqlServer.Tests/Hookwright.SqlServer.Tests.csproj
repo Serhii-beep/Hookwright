@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RequiresDocker>true</RequiresDocker>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hookwright.SqlServer\Hookwright.SqlServer.csproj" />
+    <ProjectReference Include="..\Hookwright.Store.Conformance\Hookwright.Store.Conformance.csproj" />
+  </ItemGroup>
+
+</Project>

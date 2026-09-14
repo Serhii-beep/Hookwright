@@ -8,6 +8,8 @@ internal static class ProviderConventions
 
     private const string Npgsql = "Npgsql.EntityFrameworkCore.PostgreSQL";
 
+    private const string SqlServer = "Microsoft.EntityFrameworkCore.SqlServer";
+
     internal static void Apply(ModelConfigurationBuilder configurationBuilder, string? providerName)
     {
         switch (providerName)
@@ -21,6 +23,11 @@ internal static class ProviderConventions
                 // PostgreSQL writes timestamptz only from a DateTimeOffset whose offset is zero
                 configurationBuilder.Properties<DateTimeOffset>().HaveConversion<UtcOffsetConverter>();
                 configurationBuilder.Properties<DateTimeOffset?>().HaveConversion<UtcOffsetConverter>();
+                break;
+            case SqlServer:
+                // SQL Server's default collation compares text case-insensitively. Every Hookwright
+                // contract compares it ordinally, and so do other providers.
+                configurationBuilder.Properties<string>().UseCollation("Latin1_General_100_BIN2");
                 break;
         }
     }
