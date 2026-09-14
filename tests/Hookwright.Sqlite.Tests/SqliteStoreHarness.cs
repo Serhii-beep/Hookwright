@@ -55,6 +55,7 @@ internal sealed class SqliteStoreHarness : IStoreHarness
             Endpoints = new EfEndpointStore(context);
             Events = new EfEventStore(context);
             Deliveries = new SqliteDeliveryLeaseStore(context);
+            Retention = new EfRetentionStore(context);
         }
 
         public ISubscriberStore Subscribers { get; }
@@ -64,6 +65,8 @@ internal sealed class SqliteStoreHarness : IStoreHarness
         public IWebhookEventStore Events { get; }
 
         public IDeliveryLeaseStore Deliveries { get; }
+
+        public IRetentionStore Retention { get; }
 
         public async ValueTask DisposeAsync()
         {

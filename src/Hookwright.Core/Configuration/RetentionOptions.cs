@@ -18,6 +18,11 @@ public sealed class RetentionOptions
     public TimeSpan Attempts { get; set; } = TimeSpan.FromDays(7);
 
     /// <summary>
+    /// How long dead deliveries are kept, together with their events. Default 90 days.
+    /// </summary>
+    public TimeSpan DeadDeliveries { get; set; } = TimeSpan.FromDays(90);
+
+    /// <summary>
     /// How much of a consumer's response body to record. Default 4 KB.
     /// <c>0</c> records none.
     /// </summary>
@@ -45,6 +50,12 @@ public sealed class RetentionOptions
         validator.Require(
             Attempts <= Events,
             $"{nameof(Attempts)} ({Attempts}) must not exceed {nameof(Events)} ({Events}).");
+
+        validator.Positive(DeadDeliveries, nameof(DeadDeliveries));
+
+        validator.Require(
+            DeadDeliveries >= Events,
+            $"{nameof(DeadDeliveries)} ({DeadDeliveries}) must not be shorter than {nameof(Events)} ({Events}).");
 
         validator.Require(
             ResponseBodySnippetLength <= DeliveryAttempt.MaxResponseBodySnippetLength,

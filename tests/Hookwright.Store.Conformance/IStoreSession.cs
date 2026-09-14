@@ -11,4 +11,6 @@ public interface IStoreSession : IAsyncDisposable
     IWebhookEventStore Events { get; }
 
     IDeliveryLeaseStore Deliveries { get; }
+
+    IRetentionStore Retention { get; }
 }

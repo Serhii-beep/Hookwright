@@ -65,4 +65,16 @@ public sealed class RetentionOptionsTests
         new RetentionOptions { Events = TimeSpan.Zero }.Validate().ShouldNotBeEmpty();
         new RetentionOptions { Attempts = TimeSpan.FromDays(-1) }.Validate().ShouldNotBeEmpty();
     }
+
+    [Fact]
+    public void Validate_GivenDeadDeliveriesShorterThanEvents_Fails()
+    {
+        RetentionOptions options = new()
+        {
+            Events = TimeSpan.FromDays(30),
+            DeadDeliveries = TimeSpan.FromDays(7)
+        };
+
+        options.Validate().ShouldHaveSingleItem();
+    }
 }

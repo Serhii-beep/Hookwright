@@ -75,6 +75,7 @@ internal sealed class PostgresStoreHarness : IStoreHarness
             Endpoints = new EfEndpointStore(context);
             Events = new EfEventStore(context);
             Deliveries = new PostgresDeliveryLeaseStore(context);
+            Retention = new EfRetentionStore(context);
         }
 
         public ISubscriberStore Subscribers { get; }
@@ -84,6 +85,8 @@ internal sealed class PostgresStoreHarness : IStoreHarness
         public IWebhookEventStore Events { get; }
 
         public IDeliveryLeaseStore Deliveries { get; }
+
+        public IRetentionStore Retention { get; }
 
         public async ValueTask DisposeAsync()
         {
