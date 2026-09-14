@@ -90,6 +90,43 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
     }
 
     [Fact]
+    public async Task ClaimAsync_GivenABacklogAndManyWorkers_HandsOutEveryDeliveryExactlyOnce()
+    {
+        const int Backlog = 10000;
+        const int Workers = 8;
+        const int Batch = 100;
+
+        await SeedAsync(Backlog);
+
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        List<DeliveryId>[] results = await Task.WhenAll(
+            Enumerable.Range(0, Workers).Select(worker => Task.Run(
+                async () =>
+                {
+                    List<DeliveryId> taken = [];
+                    IReadOnlyList<ClaimedDelivery> claimed;
+
+                    await using IStoreSession session = OpenSession();
+
+                    do
+                    {
+                        claimed = await session.Deliveries.ClaimAsync($"worker-{worker}", Batch, Lease, Now, token);
+                        taken.AddRange(claimed.Select(delivery => delivery.DeliveryId));
+                    }
+                    while (claimed.Count > 0);
+
+                    return taken;
+                },
+                token)));
+
+        DeliveryId[] claimed = [.. results.SelectMany(result => result)];
+
+        claimed.Length.ShouldBe(Backlog);
+        claimed.Distinct().Count().ShouldBe(Backlog);
+    }
+
+    [Fact]
     public async Task ClaimAsync_CountsAnAttemptEvenWhenTheWorkerNeverReports()
     {
         await SeedAsync(1);

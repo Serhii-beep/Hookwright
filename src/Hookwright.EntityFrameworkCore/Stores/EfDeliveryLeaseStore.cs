@@ -98,7 +98,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
     }
 
     /// <summary>
-    /// Writes each completion to its delivery for ever delivery whose lease
+    /// Writes each completion to its delivery for every delivery whose lease
     /// <paramref name="leaseOwner"/> still holds.
     /// </summary>
     /// <returns>How many deliveries were still under the lease and were written.</returns>
