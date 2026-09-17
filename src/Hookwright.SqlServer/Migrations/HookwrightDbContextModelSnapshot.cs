@@ -74,6 +74,9 @@ namespace Hookwright.SqlServer.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompletedAt")
+                        .HasDatabaseName("ix_hookwright_deliveries_completed_at");
+
                     b.HasIndex("EventId")
                         .HasDatabaseName("ix_hookwright_deliveries_event_id");
 
@@ -138,6 +141,9 @@ namespace Hookwright.SqlServer.Migrations
                         .HasColumnName("response_headers");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAt")
+                        .HasDatabaseName("ix_hookwright_delivery_attempts_attempted_at");
 
                     b.HasIndex("DeliveryId", "AttemptedAt")
                         .IsDescending(false, true)

@@ -41,6 +41,9 @@ internal sealed class DeliveryAttemptConfiguration : IEntityTypeConfiguration<De
             .IsDescending(false, true)
             .HasDatabaseName($"ix_{HookwrightTables.DeliveryAttempts}_delivery_id_attempted_at");
 
+        builder.HasIndex(a => a.AttemptedAt)
+            .HasDatabaseName($"ix_{HookwrightTables.DeliveryAttempts}_attempted_at");
+
         builder.HasOne<Delivery>()
             .WithMany()
             .HasForeignKey(a => a.DeliveryId)

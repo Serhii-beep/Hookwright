@@ -37,6 +37,9 @@ internal sealed class DeliveryConfiguration : IEntityTypeConfiguration<Delivery>
         builder.HasIndex(d => d.EventId)
             .HasDatabaseName($"ix_{HookwrightTables.Deliveries}_event_id");
 
+        builder.HasIndex(d => d.CompletedAt)
+            .HasDatabaseName($"ix_{HookwrightTables.Deliveries}_completed_at");
+
         builder.HasOne<WebhookEvent>()
             .WithMany()
             .HasForeignKey(d => d.EventId)

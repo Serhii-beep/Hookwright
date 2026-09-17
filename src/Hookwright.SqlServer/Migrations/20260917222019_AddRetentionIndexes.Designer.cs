@@ -3,66 +3,76 @@ using System;
 using Hookwright.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Hookwright.Sqlite.Migrations
+namespace Hookwright.SqlServer.Migrations
 {
     [DbContext(typeof(HookwrightDbContext))]
-    partial class HookwrightDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260917222019_AddRetentionIndexes")]
+    partial class AddRetentionIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.Entity("Hookwright.Core.Deliveries.Delivery", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("int")
                         .HasColumnName("attempt_count");
 
-                    b.Property<long?>("CompletedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EndpointId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("endpoint_id");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
-                    b.Property<long?>("LeaseExpiresAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("lease_expires_at");
 
                     b.Property<string>("LeaseOwner")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("lease_owner");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("lease_owner")
+                        .UseCollation("Latin1_General_100_BIN2");
 
-                    b.Property<long>("NextAttemptAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("next_attempt_at");
 
                     b.Property<string>("PartitionKey")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("partition_key");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("partition_key")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<short>("State")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("smallint")
                         .HasColumnName("state");
 
                     b.HasKey("Id");
@@ -86,48 +96,51 @@ namespace Hookwright.Sqlite.Migrations
             modelBuilder.Entity("Hookwright.Core.Deliveries.DeliveryAttempt", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<long>("AttemptedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("AttemptedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attempted_at");
 
                     b.Property<Guid>("DeliveryId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("delivery_id");
 
                     b.Property<long>("Duration")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("bigint")
                         .HasColumnName("duration_ms");
 
                     b.Property<string>("ErrorDetail")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("error_detail");
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("error_detail")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<short>("Outcome")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("smallint")
                         .HasColumnName("outcome");
 
                     b.Property<string>("ResponseBodySnippet")
                         .HasMaxLength(4096)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("response_body_snippet");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("response_body_snippet")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<int?>("ResponseStatusCode")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("int")
                         .HasColumnName("response_status_code");
 
                     b.Property<string>("WorkerId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("worker_id");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("worker_id")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("_responseHeaders")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("response_headers");
 
                     b.HasKey("Id");
@@ -145,29 +158,30 @@ namespace Hookwright.Sqlite.Migrations
             modelBuilder.Entity("Hookwright.Core.Endpoints.EndpointSecret", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<short>("Algorithm")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("smallint")
                         .HasColumnName("algorithm");
 
                     b.Property<Guid>("EndpointId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("endpoint_id");
 
                     b.Property<string>("ProtectedKey")
                         .IsRequired()
                         .HasMaxLength(4096)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("protected_key");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("protected_key")
+                        .UseCollation("Latin1_General_100_BIN2");
 
-                    b.Property<long>("ValidFrom")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("ValidFrom")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("valid_from");
 
-                    b.Property<long?>("ValidUntil")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("ValidUntil")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("valid_until");
 
                     b.HasKey("Id");
@@ -181,63 +195,65 @@ namespace Hookwright.Sqlite.Migrations
             modelBuilder.Entity("Hookwright.Core.Endpoints.WebhookEndpoint", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("ConsecutiveFailures")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("int")
                         .HasColumnName("consecutive_failures");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("description");
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("description")
+                        .UseCollation("Latin1_General_100_BIN2");
 
-                    b.Property<long?>("DisabledAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("disabled_at");
 
                     b.Property<string>("DisabledReason")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("disabled_reason");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("disabled_reason")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<short>("Health")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("smallint")
                         .HasColumnName("health");
 
                     b.Property<short>("PartitionMode")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("smallint")
                         .HasColumnName("partition_mode");
 
                     b.Property<int?>("RateLimitPerSecond")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("int")
                         .HasColumnName("rate_limit_per_second");
 
                     b.Property<Guid>("SubscriberId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("subscriber_id");
 
-                    b.Property<long>("UpdatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("Url")
                         .IsRequired()
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("url");
 
-                    b.Property<long?>("VerifiedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("verified_at");
 
                     b.PrimitiveCollection<string>("_eventTypeFilter")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("event_type_filter");
 
                     b.HasKey("Id");
@@ -252,25 +268,28 @@ namespace Hookwright.Sqlite.Migrations
                 {
                     b.Property<string>("Name")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("name");
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("name")
+                        .UseCollation("Latin1_General_100_BIN2");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("description");
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("description")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<bool>("IsArchived")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("bit")
                         .HasColumnName("is_archived");
 
                     b.Property<string>("SchemaJson")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("schema_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("schema_json")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.HasKey("Name");
 
@@ -280,41 +299,45 @@ namespace Hookwright.Sqlite.Migrations
             modelBuilder.Entity("Hookwright.Core.Events.WebhookEvent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("idempotency_key");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("idempotency_key")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("PartitionKey")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("partition_key");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("partition_key")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("payload");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payload")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<Guid>("SubscriberId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("subscriber_id");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("type");
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("type")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("_headers")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("headers");
 
                     b.HasKey("Id");
@@ -334,27 +357,29 @@ namespace Hookwright.Sqlite.Migrations
             modelBuilder.Entity("Hookwright.Core.Subscribers.Subscriber", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<long?>("DisabledAt")
-                        .HasColumnType("INTEGER")
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("disabled_at");
 
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("external_id");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("external_id")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("Name")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("name");
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.HasKey("Id");
 
