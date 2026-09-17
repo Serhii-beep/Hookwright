@@ -77,4 +77,32 @@ public sealed class RetentionOptionsTests
 
         options.Validate().ShouldHaveSingleItem();
     }
+
+    [Fact]
+    public void Validate_GivenAnAllowListLongerThanTheRecordKeeps_Fails()
+    {
+        RetentionOptions options = new()
+        {
+            ResponseHeaderAllowList =
+            [
+                .. Enumerable.Range(0, DeliveryAttempt.MaxResponseHeaders + 1).Select(i => $"x-header-{i}")
+            ]
+        };
+
+        options.Validate().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Validate_GivenABlankNameInTheAllowList_Fails()
+    {
+        new RetentionOptions { ResponseHeaderAllowList = ["content-type", " "] }
+            .Validate()
+            .ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Validate_GivenAnEmptyAllowList_IsAccepted()
+    {
+        new RetentionOptions { ResponseHeaderAllowList = [] }.Validate().ShouldBeEmpty();
+    }
 }

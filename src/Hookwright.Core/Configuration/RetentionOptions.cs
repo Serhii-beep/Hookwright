@@ -35,6 +35,19 @@ public sealed class RetentionOptions
     public int ErrorDetailLength { get; set; } = DeliveryAttempt.MaxErrorDetailLength;
 
     /// <summary>
+    /// The response headers that are kept on an attempt record, compared case-insensitively.
+    /// Anything else a consumer returns is dropped before it is recorded.
+    /// </summary>
+    public IReadOnlyCollection<string> ResponseHeaderAllowList { get; set; } =
+    [
+        "content-type",
+        "content-length",
+        "retry-after",
+        "x-request-id",
+        "date"
+    ];
+
+    /// <summary>
     /// Collects every configuration problem.
     /// </summary>
     /// <returns>The problems found, empty when the configuration is usable.</returns>
@@ -67,6 +80,22 @@ public sealed class RetentionOptions
             ErrorDetailLength <= DeliveryAttempt.MaxErrorDetailLength,
             $"{nameof(ErrorDetailLength)} ({ErrorDetailLength}) must not exceed " +
             $"{DeliveryAttempt.MaxErrorDetailLength}, the structural maximum the attempt record enforces.");
+
+        validator.NotNull(ResponseHeaderAllowList, nameof(ResponseHeaderAllowList));
+
+        if (ResponseHeaderAllowList is not null)
+        {
+            validator.Require(
+                ResponseHeaderAllowList.Count <= DeliveryAttempt.MaxResponseHeaders,
+                $"{nameof(ResponseHeaderAllowList)} lists {ResponseHeaderAllowList.Count} headers but the attempt " +
+                $"record keeps at most {DeliveryAttempt.MaxResponseHeaders}.");
+
+            validator.Require(
+                ResponseHeaderAllowList.All(name =>
+                    !string.IsNullOrWhiteSpace(name) && name.Length <= DeliveryAttempt.MaxResponseHeaderNameLength),
+                $"{nameof(ResponseHeaderAllowList)} must contain only non-blank names of at most " +
+                $"{DeliveryAttempt.MaxResponseHeaderNameLength} characters.");
+        }
 
         return validator.Errors;
     }
