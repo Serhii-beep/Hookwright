@@ -7,7 +7,7 @@ public interface IRetentionStore
 {
     /// <summary>
     /// Removes up to <paramref name="batchSize"/> rows of each kind that have aged past their
-    /// cutoff. Attempt records are removed first, then finished deliveries, then events with no
+    /// cutoff. Attempt records are removed first, then finished deliveries with no attempts left, then events with no
     /// deliveries left.
     /// </summary>
     /// <param name="cutoffs">The instants before which each kind of history has aged out.</param>

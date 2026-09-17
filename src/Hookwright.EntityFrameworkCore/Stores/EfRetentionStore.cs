@@ -37,6 +37,7 @@ public sealed class EfRetentionStore : IRetentionStore
 
         int deliveries = await _context.Set<Delivery>()
             .Where(delivery => delivery.CompletedAt != null
+                && !_context.Set<DeliveryAttempt>().Any(attempt => attempt.DeliveryId == delivery.Id)
                 && ((delivery.State != DeliveryState.Dead && delivery.CompletedAt < cutoffs.DeliveriesBefore)
                     || (delivery.State == DeliveryState.Dead && delivery.CompletedAt < cutoffs.DeadDeliveriesBefore)))
             .Take(batchSize)

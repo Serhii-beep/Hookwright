@@ -104,6 +104,65 @@ public abstract class RetentionStoreConformance : StoreConformance
             .IsEmpty.ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task PruneAsync_GivenABacklogOfAgedHistory_ClearsItWhileClaimsGoOn()
+    {
+        int aged = 10000;
+        int fresh = 1000;
+        int batch = 500;
+
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        await using IStoreSession seeding = OpenSession();
+        WebhookEndpoint endpoint = await RegisterEndpointAsync(seeding, token);
+        await FinishManyAsync(seeding, endpoint, Now.AddDays(-40), aged);
+        await PublishManyAsync(seeding, endpoint, Now, fresh);
+
+        Task<PruneResult> pruning = Task.Run(
+            async () =>
+            {
+                await using IStoreSession session = OpenSession();
+                PruneResult total = default;
+                PruneResult pass;
+
+                do
+                {
+                    pass = await session.Retention.PruneAsync(Cutoffs(), batch, token);
+                    total = new PruneResult(
+                        total.Attempts + pass.Attempts,
+                        total.Deliveries + pass.Deliveries,
+                        total.Events + pass.Events);
+                }
+                while (!pass.IsEmpty);
+
+                return total;
+            },
+            token);
+
+        Task<List<DeliveryId>> claiming = Task.Run(
+            async () =>
+            {
+                await using IStoreSession session = OpenSession();
+                List<DeliveryId> taken = [];
+                IReadOnlyList<ClaimedDelivery> claimed;
+
+                do
+                {
+                    claimed = await session.Deliveries.ClaimAsync(Worker, 100, Lease, Now, token);
+                    taken.AddRange(claimed.Select(delivery => delivery.DeliveryId));
+                }
+                while (claimed.Count > 0);
+
+                return taken;
+            },
+            token);
+
+        await Task.WhenAll(pruning, claiming);
+
+        (await pruning).ShouldBe(new PruneResult(Attempts: aged, Deliveries: aged, Events: aged));
+        (await claiming).Distinct().Count().ShouldBe(fresh);
+    }
+
     private static RetentionCutoffs Cutoffs(int attemptDays = 7, int eventDays = 30, int deadDays = 90)
     {
         return RetentionCutoffs.From(
@@ -124,6 +183,48 @@ public abstract class RetentionStoreConformance : StoreConformance
             [Delivery.Create(published.Id, endpoint.Id, null, at)]));
 
         await session.Events.CommitAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task PublishManyAsync(IStoreSession session, WebhookEndpoint endpoint, DateTimeOffset at, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            WebhookEvent published = WebhookEvent.Create(endpoint.SubscriberId, "order.created", $$"""{"index": {{i}}}""", at);
+
+            session.Events.Append(EventPublication.Create(published, [Delivery.Create(published.Id, endpoint.Id, null, at)]));
+        }
+
+        await session.Events.CommitAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task FinishManyAsync(IStoreSession session, WebhookEndpoint endpoint, DateTimeOffset at, int count)
+    {
+        await PublishManyAsync(session, endpoint, at, count);
+
+        IReadOnlyList<ClaimedDelivery> claimed;
+
+        do
+        {
+            claimed = await session.Deliveries.ClaimAsync(Worker, 100, Lease, at, TestContext.Current.CancellationToken);
+
+            if (claimed.Count == 0)
+            {
+                break;
+            }
+
+            DeliveryCompletion[] completions =
+            [
+                .. claimed.Select(delivery => DeliveryCompletion.From(
+                    delivery,
+                    DeliveryAttempt.FromResponse(
+                        delivery.DeliveryId, AttemptOutcome.Succeeded, 200, "body", null, at, TimeSpan.FromMilliseconds(20), Worker),
+                    new RetryDecision.Succeeded(),
+                    at))
+            ];
+
+            await session.Deliveries.CompleteAsync(Worker, completions, TestContext.Current.CancellationToken);
+        }
+        while (claimed.Count > 0);
     }
 
     private static async Task FinishDeliveryAsync(
