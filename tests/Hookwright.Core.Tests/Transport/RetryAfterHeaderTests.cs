@@ -1,6 +1,6 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using Hookwright.Core.Transport;
 
-namespace Hookwright.Core.Tests.Deliveries;
+namespace Hookwright.Core.Tests.Transport;
 
 public sealed class RetryAfterHeaderTests
 {

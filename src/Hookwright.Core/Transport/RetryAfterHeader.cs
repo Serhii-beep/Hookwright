@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace Hookwright.Core.Deliveries;
+namespace Hookwright.Core.Transport;
 
 /// <summary>
 /// Reads the HTTP <c>Retry-After</c> header, by which a consumer
