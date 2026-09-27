@@ -1,75 +1,65 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using System.Net.Sockets;
+using System.Security.Authentication;
+
+using Hookwright.Core.Deliveries;
 using Hookwright.Core.Transport;
 
 namespace Hookwright.Core.Tests.Transport;
 
 public sealed class TransportFailureTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
-
-    [Fact]
-    public void Classify_GivenTheClientTimeout_IsTimedOut()
-    {
-        TaskCanceledException timedOut = new("The request was canceled due to the configured timeout.", new TimeoutException());
-
-        (AttemptOutcome Outcome, string Detail)? failure = TransportFailure.Classify(timedOut, Timeout);
-
-        failure.ShouldNotBeNull();
-        failure.Value.Outcome.ShouldBe(AttemptOutcome.TimedOut);
-        failure.Value.Detail.ShouldContain("00:00:30");
-    }
-
     [Theory]
     [InlineData(HttpRequestError.NameResolutionError, "Name resolution failed")]
     [InlineData(HttpRequestError.SecureConnectionError, "TLS handshake failed")]
     [InlineData(HttpRequestError.ConnectionError, "Connection failed")]
+    [InlineData(HttpRequestError.ResponseEnded, "Connection lost before a response")]
     [InlineData(HttpRequestError.InvalidResponse, "InvalidResponse")]
     public void Classify_GivenARequestError_IsConnectionFailedWithADistinctReason(HttpRequestError error, string reason)
     {
-        HttpRequestException refused = new(error, "The socket refused");
+        (AttemptOutcome outcome, string detail) = TransportFailure.Classify(new HttpRequestException(error, "the socket said no"));
 
-        (AttemptOutcome Outcome, string Detail)? failure = TransportFailure.Classify(refused, Timeout);
-
-        failure.ShouldNotBeNull();
-        failure.Value.Outcome.ShouldBe(AttemptOutcome.ConnectionFailed);
-        failure.Value.Detail.ShouldStartWith(reason);
-        failure.Value.Detail.ShouldContain("The socket refused");
+        outcome.ShouldBe(AttemptOutcome.ConnectionFailed);
+        detail.ShouldBe($"{reason}: the socket said no");
     }
 
     [Fact]
-    public void Classify_GivenAResponseCutOffMidway_IsConnectionFailed()
+    public void Classify_GivenAResetBeforeAResponse_NamesItAndItsRootCause()
     {
-        HttpIOException cutOff = new(HttpRequestError.ResponseEnded, "the response ended prematurely");
+        SocketException reset = new((int)SocketError.ConnectionReset);
+        HttpRequestException exception = new(
+            HttpRequestError.Unknown,
+            "An error occurred while sending the request.",
+            new IOException("Unable to read data from the transport connection.", reset));
 
-        (AttemptOutcome Outcome, string Detail)? failure = TransportFailure.Classify(cutOff, Timeout);
+        (AttemptOutcome outcome, string detail) = TransportFailure.Classify(exception);
 
-        failure.ShouldNotBeNull();
-        failure.Value.Outcome.ShouldBe(AttemptOutcome.ConnectionFailed);
-        failure.Value.Detail.ShouldContain("ResponseEnded");
+        outcome.ShouldBe(AttemptOutcome.ConnectionFailed);
+        detail.ShouldBe($"Connection lost before a response: {reset.Message}");
     }
 
     [Fact]
-    public void Classify_GivenABlockedDestination_IsBlockedWithTheReason()
+    public void Classify_GivenAFailedHandshake_ReportsWhyRatherThanSeeInnerException()
     {
-        DeliveryBlockedException blocked = new("delivery blocked");
+        HttpRequestException exception = new(
+            HttpRequestError.SecureConnectionError,
+            "The SSL connection could not be established, see inner exception.",
+            new AuthenticationException("Cannot determine the frame size or a corrupted frame was received."));
 
-        (AttemptOutcome Outcome, string Detail)? failure = TransportFailure.Classify(blocked, Timeout);
-
-        failure.ShouldNotBeNull();
-        failure.Value.Outcome.ShouldBe(AttemptOutcome.Blocked);
-        failure.Value.Detail.ShouldBe("delivery blocked");
+        TransportFailure.Classify(exception).Detail
+            .ShouldBe("TLS handshake failed: Cannot determine the frame size or a corrupted frame was received.");
     }
 
     [Fact]
-    public void Classify_GivenTheCallersOwnCancellation_Declines()
+    public void Classify_GivenAConnectRefusedByTheNetworkGuard_IsBlockedWithItsReason()
     {
-        TransportFailure.Classify(new TaskCanceledException(), Timeout).ShouldBeNull();
-        TransportFailure.Classify(new OperationCanceledException(), Timeout).ShouldBeNull();
-    }
+        HttpRequestException wrapped = new(
+            HttpRequestError.ConnectionError,
+            "169.254.169.254 is a cloud metadata address. (169.254.169.254:80)",
+            new DeliveryBlockedException("169.254.169.254 is a cloud metadata address."));
 
-    [Fact]
-    public void Classify_GivenAnythingElse_Declines()
-    {
-        TransportFailure.Classify(new InvalidOperationException("a bug"), Timeout).ShouldBeNull();
+        (AttemptOutcome outcome, string detail) = TransportFailure.Classify(wrapped);
+
+        outcome.ShouldBe(AttemptOutcome.Blocked);
+        detail.ShouldBe("169.254.169.254 is a cloud metadata address.");
     }
 }

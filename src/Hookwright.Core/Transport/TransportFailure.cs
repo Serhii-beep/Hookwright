@@ -3,44 +3,41 @@
 namespace Hookwright.Core.Transport;
 
 /// <summary>
-/// Classifies what went wrong when no response arrived.
+/// Classifies a request that failed before any response arrived.
 /// </summary>
 internal static class TransportFailure
 {
     /// <summary>
-    /// Maps an exception the transport caught to the outcome.
+    /// Maps a failed request to the outcome to record and a line saying why.
     /// </summary>
-    /// <param name="exception">What the transport caught.</param>
-    /// <param name="timeout">The request timeout in force.</param>
+    /// <param name="exception">What the handler threw.</param>
     /// <returns>
-    /// The outcome and its detail, or <see langword="null"/> when the exception is not a delivery
-    /// failure at all.
+    /// The outcome and its detail.
     /// </returns>
-    internal static (AttemptOutcome Outcome, string Detail)? Classify(Exception exception, TimeSpan timeout)
+    internal static (AttemptOutcome Outcome, string Detail) Classify(HttpRequestException exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
+        string cause = exception.GetBaseException().Message;
+
         return exception switch
         {
-            DeliveryBlockedException blocked => (AttemptOutcome.Blocked, blocked.Message),
+            { InnerException: DeliveryBlockedException blocked } =>
+                (AttemptOutcome.Blocked, blocked.Message),
 
-            TaskCanceledException { InnerException: TimeoutException } =>
-                (AttemptOutcome.TimedOut, $"No response within {timeout}."),
+            { HttpRequestError: HttpRequestError.NameResolutionError } =>
+                (AttemptOutcome.ConnectionFailed, $"Name resolution failed: {cause}"),
 
-            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } failure =>
-                (AttemptOutcome.ConnectionFailed, $"Name resolution failed: {failure.Message}"),
+            { HttpRequestError: HttpRequestError.SecureConnectionError } =>
+                (AttemptOutcome.ConnectionFailed, $"TLS handshake failed: {cause}"),
 
-            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } failure =>
-                (AttemptOutcome.ConnectionFailed, $"TLS handshake failed: {failure.Message}"),
+            { HttpRequestError: HttpRequestError.ConnectionError } =>
+                (AttemptOutcome.ConnectionFailed, $"Connection failed: {cause}"),
 
-            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } failure =>
-                (AttemptOutcome.ConnectionFailed, $"Connection failed: {failure.Message}"),
+            { HttpRequestError: HttpRequestError.ResponseEnded } or { InnerException: IOException } =>
+                (AttemptOutcome.ConnectionFailed, $"Connection lost before a response: {cause}"),
 
-            HttpIOException failure => (AttemptOutcome.ConnectionFailed, $"Connection lost mid-response ({failure.HttpRequestError}): {failure.Message}"),
-
-            HttpRequestException failure => (AttemptOutcome.ConnectionFailed, $"{failure.HttpRequestError}: {failure.Message}"),
-
-            _ => null
+            _ => (AttemptOutcome.ConnectionFailed, $"{exception.HttpRequestError}: {cause}")
         };
     }
 }

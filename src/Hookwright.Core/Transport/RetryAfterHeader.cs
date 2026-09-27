@@ -12,6 +12,11 @@ namespace Hookwright.Core.Transport;
 public static class RetryAfterHeader
 {
     /// <summary>
+    /// The header's name.
+    /// </summary>
+    public const string Name = "Retry-After";
+
+    /// <summary>
     /// The largest whole number of seconds a <see cref="TimeSpan"/> can represent.
     /// </summary>
     public static readonly long MaxRepresentableSeconds = TimeSpan.MaxValue.Ticks / TimeSpan.TicksPerSecond;
