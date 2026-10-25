@@ -1,7 +1,7 @@
 ﻿namespace Hookwright.Core.Configuration;
 
 /// <summary>
-/// HoW the dispatcher claims work and how it makes each delivery.
+/// How the dispatcher claims work and how it makes each delivery.
 /// </summary>
 public sealed class DeliveryOptions
 {

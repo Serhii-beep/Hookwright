@@ -83,16 +83,54 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
     }
 
     /// <inheritdoc />
-    public virtual async Task<int> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    public virtual async Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
+        List<string?> owners = await Expired(now)
+            .Select(delivery => delivery.LeaseOwner)
+            .Distinct()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<ReclaimedLeases> reclaimed = [];
+
+        foreach (string owner in owners.OfType<string>())
+        {
+            int count = await Expired(now)
+                .Where(delivery => delivery.LeaseOwner == owner)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(delivery => delivery.State, DeliveryState.Pending)
+                        .SetProperty(delivery => delivery.NextAttemptAt, now)
+                        .SetProperty(delivery => delivery.LeaseOwner, (string?)null)
+                        .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (count > 0)
+            {
+                reclaimed.Add(new ReclaimedLeases(owner, count));
+            }
+        }
+
+        return reclaimed;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ReleaseAsync(string leaseOwner, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
+
         return await Context.Set<Delivery>()
-            .Where(delivery => delivery.State == DeliveryState.InFlight && delivery.LeaseExpiresAt <= now)
+            .Where(delivery => delivery.State == DeliveryState.InFlight && delivery.LeaseOwner == leaseOwner)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(delivery => delivery.State, DeliveryState.Pending)
                     .SetProperty(delivery => delivery.NextAttemptAt, now)
                     .SetProperty(delivery => delivery.LeaseOwner, (string?)null)
-                    .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null),
+                    .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null)
+                    .SetProperty(delivery => delivery.AttemptCount, delivery => delivery.AttemptCount - 1),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -232,6 +270,12 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
     {
         return Context.Set<Delivery>()
             .Where(delivery => delivery.Id == completion.DeliveryId && delivery.LeaseOwner == leaseOwner);
+    }
+
+    private IQueryable<Delivery> Expired(DateTimeOffset now)
+    {
+        return Context.Set<Delivery>()
+            .Where(delivery => delivery.State == DeliveryState.InFlight && delivery.LeaseExpiresAt <= now);
     }
 
     private async Task RetireAsync(DeliveryCompletion completion, CancellationToken cancellationToken)

@@ -313,6 +313,32 @@ public sealed class DeliveryTests
     }
 
     [Fact]
+    public void Release_GivenAnInFlightDelivery_RequeuesAndGivesTheAttemptBack()
+    {
+        Delivery delivery = CreateDeliveryInState(DeliveryState.InFlight);
+
+        delivery.Release(Now.AddSeconds(5));
+
+        delivery.State.ShouldBe(DeliveryState.Pending);
+        delivery.NextAttemptAt.ShouldBe(Now.AddSeconds(5));
+        delivery.LeaseOwner.ShouldBeNull();
+        delivery.LeaseExpiresAt.ShouldBeNull();
+        delivery.AttemptCount.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(DeliveryState.Pending)]
+    [InlineData(DeliveryState.Succeeded)]
+    public void Release_GivenADeliveryNotInFlight_Throws(DeliveryState state)
+    {
+        Delivery delivery = CreateDeliveryInState(state);
+
+        Should.Throw<InvalidOperationException>(() => delivery.Release(Now));
+
+        delivery.State.ShouldBe(state);
+    }
+
+    [Fact]
     public void BlockThenUnblock_RoundTrips()
     {
         Delivery delivery = CreateDeliveryInState(DeliveryState.Blocked);

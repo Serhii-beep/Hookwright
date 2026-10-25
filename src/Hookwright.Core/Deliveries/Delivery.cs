@@ -224,6 +224,26 @@ public sealed class Delivery
     }
 
     /// <summary>
+    /// Hands this delivery back to the queue before any request was made, as when
+    /// the worker holding it is stopping. The attempt the claim counted is given
+    /// back with it.
+    /// </summary>
+    /// <param name="now">The current instan.</param>
+    /// <exception cref="InvalidOperationException">The delivery is not in flight.</exception>
+    public void Release(DateTimeOffset now)
+    {
+        if (State is not DeliveryState.InFlight)
+        {
+            throw new InvalidOperationException("Only an in-flight delivery can be released.");
+        }
+
+        TransitionTo(DeliveryState.Pending);
+        ReleaseLease();
+        NextAttemptAt = now;
+        AttemptCount--;
+    }
+
+    /// <summary>
     /// Holds this delivery behind an older incomplete delivery in the same ordering
     /// partition.
     /// </summary>

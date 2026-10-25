@@ -141,7 +141,8 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
 
         await using IStoreSession session = OpenSession();
         (await session.Deliveries.ReclaimExpiredLeasesAsync(afterTheLease, TestContext.Current.CancellationToken))
-            .ShouldBe(1);
+            .ShouldHaveSingleItem()
+            .ShouldBe(new ReclaimedLeases("web-01:4242:a1b2c3", 1));
 
         await using IStoreSession next = OpenSession();
         (await next.Deliveries.ClaimAsync(
@@ -219,7 +220,8 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         await using IStoreSession alive = OpenSession();
         (await alive.Deliveries.ReclaimExpiredLeasesAsync(
             afterLease, TestContext.Current.CancellationToken))
-            .ShouldBe(1);
+            .ShouldHaveSingleItem()
+            .ShouldBe(new ReclaimedLeases("web-01:4242:a1b2c3", 1));
     }
 
     [Fact]
@@ -297,7 +299,7 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
 
         (await worker.Deliveries.ReclaimExpiredLeasesAsync(
             Now.AddSeconds(30), TestContext.Current.CancellationToken))
-            .ShouldBe(0);
+            .ShouldBeEmpty();
 
         (await worker.Deliveries.ClaimAsync(
             "web-02:4242:a1b2c3", 10, Lease, Now.AddSeconds(30), TestContext.Current.CancellationToken))
@@ -316,12 +318,78 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
 
         await using IStoreSession worker = OpenSession();
         (await worker.Deliveries.ReclaimExpiredLeasesAsync(afterTheLease, TestContext.Current.CancellationToken))
-            .ShouldBe(1);
+            .ShouldHaveSingleItem()
+            .ShouldBe(new ReclaimedLeases("web-01:4242:a1b2c3", 1));
 
         await using IStoreSession nextWorker = OpenSession();
         (await nextWorker.Deliveries.ClaimAsync("web-02:4242:a1b2c3", 10, Lease, afterTheLease, TestContext.Current.CancellationToken))
             .ShouldHaveSingleItem()
             .LeaseExpiresAt.ShouldBe(afterTheLease + Lease);
+    }
+
+    [Fact]
+    public async Task ReclaimExpiredLeasesAsync_GivenTwoDeadWorkers_NamesEachWithWhatItDropped()
+    {
+        await SeedAsync(3);
+
+        await using IStoreSession first = OpenSession();
+        (await first.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken))
+            .Count.ShouldBe(2);
+
+        await using IStoreSession second = OpenSession();
+        (await second.Deliveries.ClaimAsync("web-02:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken))
+            .Count.ShouldBe(1);
+
+        DateTimeOffset afterTheLease = Now + Lease + TimeSpan.FromMinutes(1);
+
+        await using IStoreSession reaper = OpenSession();
+        IReadOnlyList<ReclaimedLeases> reclaimed = await reaper.Deliveries.ReclaimExpiredLeasesAsync(
+            afterTheLease, TestContext.Current.CancellationToken);
+
+        reclaimed.ShouldBe(
+            [new ReclaimedLeases("web-01:4242:a1b2c3", 2), new ReclaimedLeases("web-02:4242:a1b2c3", 1)],
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_GivenAStoppingWorker_HandsItsLeasesBackWithTheirAttempt()
+    {
+        await SeedAsync(2);
+
+        await using IStoreSession stopping = OpenSession();
+        (await stopping.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken))
+            .Count.ShouldBe(2);
+
+        (await stopping.Deliveries.ReleaseAsync("web-01:4242:a1b2c3", Now.AddSeconds(5), TestContext.Current.CancellationToken))
+            .ShouldBe(2);
+
+        await using IStoreSession next = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await next.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, Now.AddSeconds(5), TestContext.Current.CancellationToken);
+
+        claimed.Count.ShouldBe(2);
+        claimed.ShouldAllBe(delivery => delivery.AttemptCount == 1);
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_GivenAnotherWorkersLeases_LeavesThemAlone()
+    {
+        await SeedAsync(2);
+
+        await using IStoreSession first = OpenSession();
+        await first.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 1, Lease, Now, TestContext.Current.CancellationToken);
+
+        await using IStoreSession second = OpenSession();
+        await second.Deliveries.ClaimAsync("web-02:4242:a1b2c3", 1, Lease, Now, TestContext.Current.CancellationToken);
+
+        (await first.Deliveries.ReleaseAsync("web-01:4242:a1b2c3", Now, TestContext.Current.CancellationToken)).ShouldBe(1);
+        (await first.Deliveries.ReleaseAsync("web-01:4242:a1b2c3", Now, TestContext.Current.CancellationToken)).ShouldBe(0);
+
+        await using IStoreSession reaper = OpenSession();
+        (await reaper.Deliveries.ReclaimExpiredLeasesAsync(
+            Now + Lease + TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem()
+            .ShouldBe(new ReclaimedLeases("web-02:4242:a1b2c3", 1));
     }
 
     private async Task<WebhookEndpoint> SeedAsync(int count)

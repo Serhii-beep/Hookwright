@@ -61,8 +61,17 @@ public interface IDeliveryLeaseStore
     /// <param name="now">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>
-    /// How many deliveries were recovered — worth emitting as a metric, since a rising number
-    /// means workers are dying or leases are too short.
+    /// What was recovered, grouped by the worker that dropped it.
     /// </returns>
-    Task<int> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Hands back every delivery <paramref name="leaseOwner"/> holds, due at once, as if it had never
+    /// claimed them.
+    /// </summary>
+    /// <param name="leaseOwner">The worker giving its work back.</param>
+    /// <param name="now">The current instant.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>How many deliveries were handed back.</returns>
+    Task<int> ReleaseAsync(string leaseOwner, DateTimeOffset now, CancellationToken cancellationToken);
 }
