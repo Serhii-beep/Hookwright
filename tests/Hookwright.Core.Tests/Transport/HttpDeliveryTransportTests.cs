@@ -27,7 +27,7 @@ public sealed class HttpDeliveryTransportTests : IDisposable
 
     private static readonly PlaintextSecretProtector Protector = new();
 
-    private readonly SocketsHttpHandler _handler = DeliveryHttpHandler.Create(new DeliveryOptions());
+    private readonly SocketsHttpHandler _handler = DeliveryHttpHandler.Create(new DeliveryOptions(), Guards.Development());
 
     [Fact]
     public async Task SendAsync_Always_SignsTheExactBytesItSends()
@@ -325,15 +325,14 @@ public sealed class HttpDeliveryTransportTests : IDisposable
     [Fact]
     public async Task SendAsync_GivenAConnectRefusedByTheNetworkGuard_IsBlocked()
     {
-        using SocketsHttpHandler guarded = DeliveryHttpHandler.Create(new DeliveryOptions());
-        guarded.ConnectCallback = (_, _) => throw new DeliveryBlockedException("blocked");
+        using SocketsHttpHandler guarded = DeliveryHttpHandler.Create(new DeliveryOptions(), Guards.Strict());
 
         using HttpDeliveryTransport transport = new(guarded, Signer, Protector, new DeliveryOptions(), new RetentionOptions());
 
-        DeliveryResult result = await transport.SendAsync(Delivery(new Uri("http://169.254.169.254/"), WebhookSecret.Generate()), Worker, Now, TestContext.Current.CancellationToken);
+        DeliveryResult result = await transport.SendAsync(Delivery(new Uri("https://169.254.169.254/"), WebhookSecret.Generate()), Worker, Now, TestContext.Current.CancellationToken);
 
         result.Attempt.Outcome.ShouldBe(AttemptOutcome.Blocked);
-        result.Attempt.ErrorDetail.ShouldBe("blocked");
+        result.Attempt.ErrorDetail.ShouldBe("169.254.169.254 resolves to a cloud metadata address, which deliveries may not reach.");
     }
 
     [Fact]

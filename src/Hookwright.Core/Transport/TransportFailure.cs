@@ -1,4 +1,6 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using System.Net.Sockets;
+
+using Hookwright.Core.Deliveries;
 
 namespace Hookwright.Core.Transport;
 
@@ -25,7 +27,8 @@ internal static class TransportFailure
             { InnerException: DeliveryBlockedException blocked } =>
                 (AttemptOutcome.Blocked, blocked.Message),
 
-            { HttpRequestError: HttpRequestError.NameResolutionError } =>
+            { HttpRequestError: HttpRequestError.NameResolutionError } or
+            { InnerException: SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain } } =>
                 (AttemptOutcome.ConnectionFailed, $"Name resolution failed: {cause}"),
 
             { HttpRequestError: HttpRequestError.SecureConnectionError } =>

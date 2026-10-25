@@ -50,4 +50,28 @@ public sealed class SecurityOptionsTests
     {
         new SecurityOptions { MaxPayloadBytes = bytes }.Validate().ShouldNotBeEmpty();
     }
+
+    [Fact]
+    public void Validate_GivenAllowancesInTheRightShape_IsAccepted()
+    {
+        SecurityOptions options = new() { AllowedNetworks = ["10.20.0.0/16", "fd00::/8"], AllowedPorts = [8443] };
+
+        options.Validate().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_GivenAnAllowedNetworkThatIsNotACidrBlock_Fails()
+    {
+        SecurityOptions options = new() { AllowedNetworks = ["10.20.0.0/16", "not-a-network"] };
+
+        options.Validate().ShouldHaveSingleItem().ShouldContain("not-a-network");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(65536)]
+    public void Validate_GivenAPortOutOfRange_Fails(int port)
+    {
+        new SecurityOptions { AllowedPorts = [port] }.Validate().ShouldHaveSingleItem();
+    }
 }

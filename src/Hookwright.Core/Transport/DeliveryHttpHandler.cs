@@ -5,12 +5,14 @@ using Hookwright.Core.Configuration;
 namespace Hookwright.Core.Transport;
 
 /// <summary>
-/// The one <see cref="SocketsHttpHandler"/> deliveries go through.
+/// The one <see cref="SocketsHttpHandler"/> deliveries go through, configured for talking to
+/// strangers' servers rather than to the host's own services.
 /// </summary>
 public static class DeliveryHttpHandler
 {
     /// <summary>
-    /// How long a pooled connection lives before it is replaced.
+    /// How long a pooled connection lives before it is replaced, so that a destination that
+    /// moved in DNS is found without a restart.
     /// </summary>
     public static readonly TimeSpan ConnectionLifetime = TimeSpan.FromMinutes(2);
 
@@ -20,11 +22,12 @@ public static class DeliveryHttpHandler
     public static readonly TimeSpan ConnectionIdleTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Creates the handler.
+    /// Creates the handler. The caller owns it and disposes it.
     /// </summary>
-    public static SocketsHttpHandler Create(DeliveryOptions options)
+    public static SocketsHttpHandler Create(DeliveryOptions options, SsrfGuard guard)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(guard);
 
         return new SocketsHttpHandler
         {
@@ -33,7 +36,8 @@ public static class DeliveryHttpHandler
             MaxConnectionsPerServer = options.MaxConnectionsPerEndpoint,
             AllowAutoRedirect = false,
             AutomaticDecompression = DecompressionMethods.All,
-            UseCookies = false
+            UseCookies = false,
+            ConnectCallback = guard.ConnectAsync
         };
     }
 }

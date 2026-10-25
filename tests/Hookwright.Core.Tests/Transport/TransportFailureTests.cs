@@ -62,4 +62,18 @@ public sealed class TransportFailureTests
         outcome.ShouldBe(AttemptOutcome.Blocked);
         detail.ShouldBe("169.254.169.254 is a cloud metadata address.");
     }
+
+    [Fact]
+    public void Classify_GivenALookupTheGuardCouldNotComplete_IsNameResolution()
+    {
+        HttpRequestException wrapped = new(
+            HttpRequestError.ConnectionError,
+            "No such host is known. (hookwright.invalid:443)",
+            new SocketException((int)SocketError.HostNotFound));
+
+        (AttemptOutcome outcome, string detail) = TransportFailure.Classify(wrapped);
+
+        outcome.ShouldBe(AttemptOutcome.ConnectionFailed);
+        detail.ShouldStartWith("Name resolution failed: ");
+    }
 }
