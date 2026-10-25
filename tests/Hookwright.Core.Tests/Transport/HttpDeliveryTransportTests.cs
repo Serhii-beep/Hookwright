@@ -227,12 +227,20 @@ public sealed class HttpDeliveryTransportTests : IDisposable
     {
         await using LoopbackEndpoint endpoint = await LoopbackEndpoint.StartAsync(async context =>
         {
+            if (context.Request.Path == "/warm")
+            {
+                return;
+            }
+
             await context.Response.WriteAsync("first part", context.RequestAborted);
             await context.Response.Body.FlushAsync(context.RequestAborted);
             await Task.Delay(TimeSpan.FromSeconds(10), context.RequestAborted);
         });
 
-        using HttpDeliveryTransport transport = Transport(deliveryOptions: new DeliveryOptions { RequestTimeout = TimeSpan.FromMilliseconds(500) });
+        using HttpDeliveryTransport transport = Transport(deliveryOptions: new DeliveryOptions { RequestTimeout = TimeSpan.FromSeconds(1) });
+
+        (await transport.SendAsync(Delivery(new Uri(endpoint.Url, "/warm"), WebhookSecret.Generate()), Worker, Now, TestContext.Current.CancellationToken))
+            .Attempt.Outcome.ShouldBe(AttemptOutcome.Succeeded);
 
         DeliveryResult result = await transport.SendAsync(Delivery(endpoint.Url, WebhookSecret.Generate()), Worker, Now, TestContext.Current.CancellationToken);
 
