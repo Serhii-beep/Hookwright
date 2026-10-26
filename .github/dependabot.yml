@@ -16,10 +16,10 @@ updates:
         patterns:
           - "xunit*"
           - "Microsoft.Testing.Extensions.*"
-        efcore:
-          patterns:
-          - "Microsoft.EntityFrameworkCore.*"
-          - "Npgsql.EntityFrameworkCore.PostgreSQL"
+      efcore:
+        patterns:
+        - "Microsoft.EntityFrameworkCore.*"
+        - "Npgsql.EntityFrameworkCore.PostgreSQL"
   
   - package-ecosystem: github-actions
     directory: /
