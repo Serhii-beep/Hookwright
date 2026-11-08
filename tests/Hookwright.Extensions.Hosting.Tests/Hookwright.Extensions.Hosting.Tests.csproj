@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hookwright.Extensions.Hosting\Hookwright.Extensions.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Hookwright.Sqlite\Hookwright.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>
