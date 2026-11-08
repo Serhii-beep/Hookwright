@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.IO.Pipelines;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -397,17 +398,22 @@ public sealed class HttpDeliveryTransportTests : IDisposable
             {
                 while (Interlocked.Read(ref written) < Streamed)
                 {
-                    await context.Response.Body.WriteAsync(chunk, context.RequestAborted);
+                    // Kestrel does not throw for a write after the client has gone: it completes the response
+                    // pipe and drops the data, and RequestAborted fires only later. The result is what says
+                    // so at once, and a dropped chunk was never written.
+                    FlushResult flushed = await context.Response.BodyWriter.WriteAsync(chunk, context.RequestAborted);
+
+                    if (flushed.IsCompleted || flushed.IsCanceled)
+                    {
+                        break;
+                    }
+
                     Interlocked.Add(ref written, chunk.Length);
                 }
             }
             catch (OperationCanceledException)
             {
                 // The transport hung up, which is the point
-            }
-            catch (IOException)
-            {
-                // The same, noticed by the socket first
             }
             finally
             {
