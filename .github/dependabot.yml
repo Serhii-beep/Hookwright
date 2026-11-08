@@ -19,6 +19,7 @@ updates:
       efcore:
         patterns:
         - "Microsoft.EntityFrameworkCore.*"
+        - "Microsoft.Extensions.Logging.Abstractions"
         - "Npgsql.EntityFrameworkCore.PostgreSQL"
   
   - package-ecosystem: github-actions
