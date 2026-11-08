@@ -8,23 +8,48 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
+    private readonly Lock _gate = new();
     private readonly Queue<ClaimedDelivery> _due = new();
     private readonly Channel<ClaimCall> _claimed = Channel.CreateUnbounded<ClaimCall>();
+    private readonly Channel<CompleteCall> _completed = Channel.CreateUnbounded<CompleteCall>();
     private readonly Channel<DateTimeOffset> _reaped = Channel.CreateUnbounded<DateTimeOffset>();
 
     public List<ClaimCall> Claims { get; } = [];
+
+    public List<CompleteCall> Completions { get; } = [];
 
     public List<DateTimeOffset> Reaps { get; } = [];
 
     public List<ReleaseCall> Releases { get; } = [];
 
+    public List<string> Calls { get; } = [];
+
     public Queue<IReadOnlyList<ReclaimedLeases>> ReapAnswers { get; } = new();
 
     public Exception? NextClaimFailure { get; set; }
 
+    public Exception? NextCompleteFailure { get; set; }
+
     public Exception? NextReapFailure { get; set; }
 
+    public Task CompleteGate { get; set; } = Task.CompletedTask;
+
+    public int CompleteShortfall { get; set; }
+
     public int ReleaseAnswer { get; set; }
+
+    public int Due => _due.Count;
+
+    public int Recorded
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return Completions.Sum(call => call.Completions.Count);
+            }
+        }
+    }
 
     public void MakeDue(int count, DateTimeOffset leaseExpiresAt)
     {
@@ -37,6 +62,11 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
     public Task<ClaimCall> NextClaimAsync(CancellationToken cancellationToken)
     {
         return _claimed.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(Patience, cancellationToken);
+    }
+
+    public Task<CompleteCall> NextCompleteAsync(CancellationToken cancellationToken)
+    {
+        return _completed.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(Patience, cancellationToken);
     }
 
     public Task<DateTimeOffset> NextReapAsync(CancellationToken cancellationToken)
@@ -52,7 +82,12 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         CancellationToken cancellationToken)
     {
         ClaimCall call = new(leaseOwner, batchSize, leaseDuration, now);
-        Claims.Add(call);
+
+        lock (_gate)
+        {
+            Claims.Add(call);
+            Calls.Add("claim");
+        }
 
         List<ClaimedDelivery> taken = [];
 
@@ -74,16 +109,33 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         return Task.FromResult<IReadOnlyList<ClaimedDelivery>>(taken);
     }
 
-    public Task<int> CompleteAsync(
+    public async Task<int> CompleteAsync(
         string leaseOwner,
         IReadOnlyList<DeliveryCompletion> completions,
         CancellationToken cancellationToken)
     {
-        throw new NotSupportedException("The claimer and the reaper never complete a delivery.");
+        CompleteCall call = new(leaseOwner, [.. completions]);
+
+        lock (_gate)
+        {
+            Completions.Add(call);
+            Calls.Add("complete");
+        }
+
+        _completed.Writer.TryWrite(call);
+        await CompleteGate.WaitAsync(cancellationToken);
+
+        if (NextCompleteFailure is { } failure)
+        {
+            NextCompleteFailure = null;
+
+            throw failure;
+        }
+
+        return Math.Max(0, completions.Count - CompleteShortfall);
     }
 
-    public Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken
-cancellationToken)
+    public Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         Reaps.Add(now);
         _reaped.Writer.TryWrite(now);
@@ -100,12 +152,18 @@ cancellationToken)
 
     public Task<int> ReleaseAsync(string leaseOwner, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        Releases.Add(new ReleaseCall(leaseOwner, now));
+        lock (_gate)
+        {
+            Releases.Add(new ReleaseCall(leaseOwner, now));
+            Calls.Add("release");
+        }
 
         return Task.FromResult(ReleaseAnswer);
     }
 
     internal sealed record ClaimCall(string LeaseOwner, int BatchSize, TimeSpan LeaseDuration, DateTimeOffset Now);
+
+    internal sealed record CompleteCall(string LeaseOwner, IReadOnlyList<DeliveryCompletion> Completions);
 
     internal sealed record ReleaseCall(string LeaseOwner, DateTimeOffset Now);
 }

@@ -23,4 +23,12 @@ internal static class TestDeliveries
             Secrets = []
         };
     }
+
+    public static DeliveryCompletion Completed(ClaimedDelivery claimed, DateTimeOffset now)
+    {
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            claimed.DeliveryId, AttemptOutcome.Succeeded, 200, null, null, now, ScriptedTransport.Duration, "web-01:4242:a1b2c3");
+
+        return DeliveryCompletion.From(claimed, attempt, new RetryDecision.Succeeded(), now);
+    }
 }
