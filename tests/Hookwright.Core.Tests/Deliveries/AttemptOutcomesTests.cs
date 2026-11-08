@@ -71,7 +71,8 @@ public sealed class AttemptOutcomesTests
         [
             AttemptOutcome.TimedOut,
             AttemptOutcome.ConnectionFailed,
-            AttemptOutcome.Blocked
+            AttemptOutcome.Blocked,
+            AttemptOutcome.Unsendable
         ];
 
         for (int statusCode = 100; statusCode <= 599; statusCode++)
@@ -100,6 +101,12 @@ public sealed class AttemptOutcomesTests
     public void IsRetryable_GivenSuccess_IsFalse()
     {
         AttemptOutcomes.IsRetryable(AttemptOutcome.Succeeded).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void IsRetryable_GivenUnsendable_IsFalse()
+    {
+        AttemptOutcomes.IsRetryable(AttemptOutcome.Unsendable).ShouldBeFalse();
     }
 
     [Fact]

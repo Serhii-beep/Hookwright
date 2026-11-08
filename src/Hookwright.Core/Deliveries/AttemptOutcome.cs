@@ -47,5 +47,11 @@ public enum AttemptOutcome : short
     /// <summary>
     /// The SSRF guard refused to connect, because the URL resolved to a blocked address.
     /// </summary>
-    Blocked = 7
+    Blocked = 7,
+
+    /// <summary>
+    /// The attempt could not be made: the transport refused before anything left the process,
+    /// for a reason that waiting will not change, such as an endpoint with no active signing key.
+    /// </summary>
+    Unsendable = 8
 }

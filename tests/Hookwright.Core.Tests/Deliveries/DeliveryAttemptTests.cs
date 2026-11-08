@@ -1,6 +1,4 @@
 ﻿using Hookwright.Core.Deliveries;
-using Hookwright.Core.Endpoints;
-using Hookwright.Core.Events;
 
 namespace Hookwright.Core.Tests.Deliveries;
 
@@ -43,6 +41,7 @@ public sealed class DeliveryAttemptTests
     [InlineData(AttemptOutcome.TimedOut)]
     [InlineData(AttemptOutcome.ConnectionFailed)]
     [InlineData(AttemptOutcome.Blocked)]
+    [InlineData(AttemptOutcome.Unsendable)]
     public void FromResponse_GivenAnOutcomeWithNoResponse_Throws(AttemptOutcome outcome)
     {
         Should.Throw<ArgumentException>(() => DeliveryAttempt.FromResponse(

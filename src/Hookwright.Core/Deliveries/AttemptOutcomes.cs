@@ -11,8 +11,8 @@ public static class AttemptOutcomes
     /// </summary>
     /// <remarks>
     /// Transport failures never reach here. No status code maps to
-    /// <see cref="AttemptOutcome.TimedOut"/>, <see cref="AttemptOutcome.ConnectionFailed"/>
-    /// or <see cref="AttemptOutcome.Blocked"/>.
+    /// <see cref="AttemptOutcome.TimedOut"/>, <see cref="AttemptOutcome.ConnectionFailed"/>,
+    /// <see cref="AttemptOutcome.Blocked"/> or <see cref="AttemptOutcome.Unsendable"/>.
     /// </remarks>
     public static AttemptOutcome FromStatusCode(int statusCode)
     {
@@ -42,7 +42,8 @@ public static class AttemptOutcomes
 
             AttemptOutcome.Succeeded or
             AttemptOutcome.Rejected or
-            AttemptOutcome.Gone => false,
+            AttemptOutcome.Gone or
+            AttemptOutcome.Unsendable => false,
 
             _ => throw new ArgumentOutOfRangeException(
                 nameof(outcome),

@@ -87,8 +87,8 @@ public sealed class DeliveryAttempt
 
     /// <summary>
     /// The HTTP status code, or <see langword="null"/> when no response
-    /// arrived - a timeout, a connection failure, or a request SSRF guard
-    /// refused to make.
+    /// arrived - a timeout, a connection failure, a request SSRF guard
+    /// refused to make or one that could not be made at all.
     /// </summary>
     public int? ResponseStatusCode { get; }
 
@@ -214,7 +214,8 @@ public sealed class DeliveryAttempt
 
         AttemptOutcome.TimedOut or
         AttemptOutcome.ConnectionFailed or
-        AttemptOutcome.Blocked => false,
+        AttemptOutcome.Blocked or
+        AttemptOutcome.Unsendable => false,
 
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unhandled outcome.")
     };

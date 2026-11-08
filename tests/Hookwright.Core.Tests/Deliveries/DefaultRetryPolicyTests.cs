@@ -30,6 +30,13 @@ public sealed class DefaultRetryPolicyTests
             .ShouldBeOfType<RetryDecision.Fail>();
     }
 
+    [Fact]
+    public void Decide_GivenAnUnsendableDelivery_Fails()
+    {
+        CreatePolicy().Decide(AttemptOutcome.Unsendable, 1, null, Now)
+            .ShouldBeOfType<RetryDecision.Fail>();
+    }
+
     [Theory]
     [InlineData(AttemptOutcome.ServerError)]
     [InlineData(AttemptOutcome.Throttled)]
