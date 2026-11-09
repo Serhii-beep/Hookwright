@@ -421,16 +421,24 @@ public sealed class HttpDeliveryTransportTests : IDisposable
             }
         });
 
-        using HttpDeliveryTransport transport = Transport();
+        SsrfGuard guard = Guards.Development();
+        CountingStream? connection = null;
+        using SocketsHttpHandler handler = DeliveryHttpHandler.Create(new DeliveryOptions(), guard);
+        handler.ConnectCallback = async (context, cancellationToken) =>
+            connection = new CountingStream(await guard.ConnectAsync(context, cancellationToken));
+        using HttpDeliveryTransport transport = new(handler, Signer, Protector, new DeliveryOptions(), new RetentionOptions());
 
         DeliveryResult result = await transport.SendAsync(Delivery(endpoint.Url, WebhookSecret.Generate()), Worker, Now, TestContext.Current.CancellationToken);
 
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        connection.ShouldNotBeNull();
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Kestrel wrote {Interlocked.Read(ref written)} bytes. The transport read {connection.BytesRead}.");
 
         result.Attempt.Outcome.ShouldBe(AttemptOutcome.Succeeded);
         result.Attempt.ResponseBodySnippet.ShouldBe(new string('x', DeliveryAttempt.MaxResponseBodySnippetLength));
 
-        Interlocked.Read(ref written).ShouldBeLessThan(Streamed / 4);
+        connection.BytesRead.ShouldBeLessThan(2L * 1024 * 1024);
     }
 
     [Fact]
