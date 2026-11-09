@@ -2,6 +2,7 @@
 using Hookwright.Core.Endpoints;
 using Hookwright.Core.Events;
 using Hookwright.Core.Storage;
+using Hookwright.Core.Subscribers;
 
 namespace Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
 
@@ -20,7 +21,11 @@ internal static class TestDeliveries
             Headers = new Dictionary<string, string>(),
             EndpointId = WebhookEndpointId.New(),
             Url = new Uri("https://example.test/hooks"),
-            Secrets = []
+            Secrets = [],
+            SubscriberId = SubscriberId.New(),
+            EndpointHealth = EndpointHealth.Healthy,
+            ConsecutiveFailures = 0,
+            FailingSince = null
         };
     }
 

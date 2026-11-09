@@ -17,7 +17,7 @@ namespace Hookwright.SqlServer.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -217,6 +217,10 @@ namespace Hookwright.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("disabled_reason")
                         .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset?>("FailingSince")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("failing_since");
 
                     b.Property<short>("Health")
                         .HasColumnType("smallint")

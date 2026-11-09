@@ -2,6 +2,7 @@
 using Hookwright.Core.Endpoints;
 using Hookwright.Core.Events;
 using Hookwright.Core.Storage;
+using Hookwright.Core.Subscribers;
 
 namespace Hookwright.Core.Tests.Storage;
 
@@ -20,7 +21,11 @@ public sealed class DeliveryCompletionTests
         Headers = new Dictionary<string, string>(),
         EndpointId = WebhookEndpointId.New(),
         Url = new Uri("https://example.com"),
-        Secrets = []
+        Secrets = [],
+        SubscriberId = SubscriberId.New(),
+        EndpointHealth = EndpointHealth.Healthy,
+        ConsecutiveFailures = 0,
+        FailingSince = null
     };
 
     private static DeliveryAttempt Attempt() => DeliveryAttempt.FromResponse(

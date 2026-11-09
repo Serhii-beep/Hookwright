@@ -85,9 +85,14 @@ public sealed class WebhookEndpoint
     public EndpointHealth Health { get; private set; }
 
     /// <summary>
-    /// Failures since the last success. Drives circuit breaking.
+    /// Retryable failures since the endpoint last answered. Drives circuit breaking.
     /// </summary>
     public int ConsecutiveFailures { get; private set; }
+
+    /// <summary>
+    /// When the current run of failures began, or <see langword="null"/> while the endpoint is answering.
+    /// </summary>
+    public DateTimeOffset? FailingSince { get; private set; }
 
     /// <summary>
     /// Why the endpoint was disabled, or <see langword="null"/> if it is not.
@@ -271,6 +276,7 @@ public sealed class WebhookEndpoint
     {
         Health = EndpointHealth.Healthy;
         ConsecutiveFailures = 0;
+        FailingSince = null;
         DisabledReason = null;
         DisabledAt = null;
         Touch(now);

@@ -18,7 +18,7 @@ namespace Hookwright.PostgreSql.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -210,6 +210,10 @@ namespace Hookwright.PostgreSql.Migrations
                     b.Property<string>("DisabledReason")
                         .HasColumnType("text")
                         .HasColumnName("disabled_reason");
+
+                    b.Property<DateTimeOffset?>("FailingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failing_since");
 
                     b.Property<short>("Health")
                         .HasColumnType("smallint")

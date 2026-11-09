@@ -205,7 +205,11 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                 Headers = row.Event.Headers,
                 EndpointId = row.Endpoint.Id,
                 Url = row.Endpoint.Url,
-                Secrets = keys.TryGetValue(row.Endpoint.Id, out List<EndpointSecret>? found) ? found : []
+                Secrets = keys.TryGetValue(row.Endpoint.Id, out List<EndpointSecret>? found) ? found : [],
+                SubscriberId = row.Endpoint.SubscriberId,
+                EndpointHealth = row.Endpoint.Health,
+                ConsecutiveFailures = row.Endpoint.ConsecutiveFailures,
+                FailingSince = row.Endpoint.FailingSince
             })
         ];
     }

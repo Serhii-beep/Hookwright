@@ -48,12 +48,16 @@ public sealed class EfDeliveryLeaseStoreTests
         await using SqliteConnection connection = TestDatabase.Open();
         await using HookwrightDbContext context = await TestDatabase.CreateSchemaAsync(connection, TestContext.Current.CancellationToken);
 
-        (Delivery delivery, ClaimedDelivery _) = await SeedClaimedAsync(context);
+        (Delivery delivery, ClaimedDelivery seeded) = await SeedClaimedAsync(context);
 
         IReadOnlyList<ClaimedDelivery> claimed = await new TestLeaseStore(context)
             .ProjectAsync([delivery.Id], Now, TestContext.Current.CancellationToken);
 
         ClaimedDelivery only = claimed.ShouldHaveSingleItem();
+        only.SubscriberId.ShouldBe(seeded.SubscriberId);
+        only.EndpointHealth.ShouldBe(EndpointHealth.Healthy);
+        only.ConsecutiveFailures.ShouldBe(0);
+        only.FailingSince.ShouldBeNull();
         only.DeliveryId.ShouldBe(delivery.Id);
         only.AttemptCount.ShouldBe(1);
         only.LeaseExpiresAt.ShouldBe(Now.AddSeconds(60));
@@ -137,7 +141,11 @@ public sealed class EfDeliveryLeaseStoreTests
             Headers = published.Headers,
             EndpointId = endpoint.Id,
             Url = endpoint.Url,
-            Secrets = []
+            Secrets = [],
+            SubscriberId = subscriber.Id,
+            EndpointHealth = endpoint.Health,
+            ConsecutiveFailures = endpoint.ConsecutiveFailures,
+            FailingSince = endpoint.FailingSince
         };
 
         return (delivery, claimed);

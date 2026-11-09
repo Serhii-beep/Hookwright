@@ -8,6 +8,7 @@ using Hookwright.Core.Deliveries;
 using Hookwright.Core.Endpoints;
 using Hookwright.Core.Events;
 using Hookwright.Core.Storage;
+using Hookwright.Core.Subscribers;
 using Hookwright.Core.Tests.Transport.Helpers;
 using Hookwright.Core.Transport;
 using Hookwright.Signing;
@@ -512,7 +513,11 @@ public sealed class HttpDeliveryTransportTests : IDisposable
             [
                 .. secrets.Select(secret => EndpointSecret.Create(
                     endpointId, Protector.Protect(secret), SignatureAlgorithm.HmacSha256, Now.AddDays(-1)))
-            ]
+            ],
+            SubscriberId = SubscriberId.New(),
+            EndpointHealth = EndpointHealth.Healthy,
+            ConsecutiveFailures = 0,
+            FailingSince = null
         };
     }
 

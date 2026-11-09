@@ -31,6 +31,10 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         only.Url.ShouldBe(endpoint.Url);
         only.EventType.ShouldBe("order.created");
         only.Payload.ShouldBe("""{"index":0}""");
+        only.SubscriberId.ShouldBe(endpoint.SubscriberId);
+        only.EndpointHealth.ShouldBe(EndpointHealth.Healthy);
+        only.ConsecutiveFailures.ShouldBe(0);
+        only.FailingSince.ShouldBeNull();
 
         only.Secrets.ShouldHaveSingleItem().ProtectedKey.ShouldBe("protected-key");
     }

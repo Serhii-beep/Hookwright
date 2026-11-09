@@ -1,6 +1,7 @@
 ﻿using Hookwright.Core.Deliveries;
 using Hookwright.Core.Endpoints;
 using Hookwright.Core.Events;
+using Hookwright.Core.Subscribers;
 
 namespace Hookwright.Core.Storage;
 
@@ -61,4 +62,27 @@ public sealed class ClaimedDelivery
     /// rotation window.
     /// </summary>
     public required IReadOnlyList<EndpointSecret> Secrets { get; init; }
+
+    /// <summary>
+    /// The subscriber the endpoint belongs to.
+    /// </summary>
+    public required SubscriberId SubscriberId { get; init; }
+
+    /// <summary>
+    /// The endpoint's health when the delivery was claimed. A disabled endpoint's
+    /// delivery is cancelled rather than sent.
+    /// </summary>
+    public required EndpointHealth EndpointHealth { get; init; }
+
+    /// <summary>
+    /// The endpoint's failures in a row when the delivery was claimed. Seeds the
+    /// endpoint's circuit on an instance that has not seen it yet.
+    /// </summary>
+    public required int ConsecutiveFailures { get; init; }
+
+    /// <summary>
+    /// When the endpoint's current run of failures began, or <see langword="null"/>
+    /// while it is answering.
+    /// </summary>
+    public required DateTimeOffset? FailingSince { get; init; }
 }

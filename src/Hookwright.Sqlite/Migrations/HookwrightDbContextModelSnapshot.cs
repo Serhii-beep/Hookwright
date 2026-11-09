@@ -15,7 +15,7 @@ namespace Hookwright.Sqlite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("Hookwright.Core.Deliveries.Delivery", b =>
                 {
@@ -204,6 +204,10 @@ namespace Hookwright.Sqlite.Migrations
                     b.Property<string>("DisabledReason")
                         .HasColumnType("TEXT")
                         .HasColumnName("disabled_reason");
+
+                    b.Property<long?>("FailingSince")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("failing_since");
 
                     b.Property<short>("Health")
                         .HasColumnType("INTEGER")
