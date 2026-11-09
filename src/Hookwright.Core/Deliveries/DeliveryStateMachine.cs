@@ -20,15 +20,18 @@ public static class DeliveryStateMachine
                 DeliveryState.Cancelled
             ]),
 
-            // Back to Pending covers two different events that need the same move: a
-            // retryable failure with attempts remaining, and a lapsed lease being
-            // reclaimed from a worker that died.
+            // Back to Pending covers three events that need the same move: a retryable
+            // failure with attempts remaining, a lapsed lease being reclaimed from a
+            // worker that died, and a worker handing back a delivery its nedpoint's
+            // circuit would not admit. Cancelled is the worker finding the endpoint
+            // disabled on claiming it.
             [DeliveryState.InFlight] = FrozenSet.ToFrozenSet(
             [
                 DeliveryState.Succeeded,
                 DeliveryState.Failed,
                 DeliveryState.Dead,
-                DeliveryState.Pending
+                DeliveryState.Pending,
+                DeliveryState.Cancelled
             ]),
 
             // The head of its partition completed, or the endpoint went away.

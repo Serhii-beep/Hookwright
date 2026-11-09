@@ -109,7 +109,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         return Task.FromResult<IReadOnlyList<ClaimedDelivery>>(taken);
     }
 
-    public async Task<int> CompleteAsync(
+    public async Task<CompletionReport> CompleteAsync(
         string leaseOwner,
         IReadOnlyList<DeliveryCompletion> completions,
         CancellationToken cancellationToken)
@@ -132,7 +132,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
             throw failure;
         }
 
-        return Math.Max(0, completions.Count - CompleteShortfall);
+        return new CompletionReport(Math.Max(0, completions.Count - CompleteShortfall), []);
     }
 
     public Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken)

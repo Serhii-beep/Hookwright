@@ -36,21 +36,24 @@ public interface IDeliveryLeaseStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Records the results of a batch of attempts.
+    /// Records what a worker concluded abdout a batch of claimed deliveries.
     /// </summary>
     /// <param name="leaseOwner">The worker reporting, used to prove the claims are still its own.</param>
-    /// <param name="completions">The results to apply.</param>
+    /// <param name="completions">The conclusions to apply.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
-    /// <returns>How many state changes were applied.</returns>
+    /// <returns>How many state changes were applied, and which endpoints were disabled.</returns>
     /// <remarks>
     /// A state change applies only while <paramref name="leaseOwner"/> still holds the
     /// lease. If a worker stalls long enough for its lease to lapse and another worker
     /// to reclaim the delivery, the stalled worker's result must not overwrite the new claim,
-    /// so it is dropped — and the shortfall in the return value makes that visible rather than
-    /// silent. The attempt record is appended either way: the request really was made, and
-    /// that row is what later explains a duplicate the consumer received.
+    /// so it is dropped - and the shortfall in the report makes that visible rather than
+    /// silent. An attempt record is appended either way: the request really was made, and
+    /// that row is what later explains a duplicate the consumer received. A completion that
+    /// gives the claim's attempt back also lowers the attempt counter the claim raised. An
+    /// endpoint a completion asks to retire is disabled for the reason given, and the report
+    /// names it unless it was disabled already.
     /// </remarks>
-    Task<int> CompleteAsync(
+    Task<CompletionReport> CompleteAsync(
         string leaseOwner,
         IReadOnlyList<DeliveryCompletion> completions,
         CancellationToken cancellationToken);

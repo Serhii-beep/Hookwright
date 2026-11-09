@@ -133,11 +133,11 @@ public sealed class CompletionWriter
 
     private async Task WriteAsync(List<DeliveryCompletion> batch)
     {
-        int applied;
+        CompletionReport report;
 
         try
         {
-            applied = await _store.CompleteAsync(WorkerId, batch, CancellationToken.None).ConfigureAwait(false);
+            report = await _store.CompleteAsync(WorkerId, batch, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -149,12 +149,12 @@ public sealed class CompletionWriter
             return;
         }
 
-        if (applied < batch.Count)
+        if (report.Applied < batch.Count)
         {
             // The store dropped results for leases this worker no longer held: another worker has
             // those deliveries now, and the attempt record says so.
-            DispatchMetrics.Late.Add(batch.Count - applied);
-            DispatchLog.LateResults(_logger, WorkerId, applied, batch.Count);
+            DispatchMetrics.Late.Add(batch.Count - report.Applied);
+            DispatchLog.LateResults(_logger, WorkerId, report.Applied, batch.Count);
         }
     }
 }

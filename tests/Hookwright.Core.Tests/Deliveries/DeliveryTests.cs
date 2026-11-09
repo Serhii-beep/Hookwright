@@ -235,6 +235,7 @@ public sealed class DeliveryTests
               ("InFlight -> Failed",    CreateDeliveryInState(DeliveryState.InFlight),  d => d.MarkFailed(Now)),
               ("InFlight -> Dead",      CreateDeliveryInState(DeliveryState.InFlight),  d => d.MarkDead(Now)),
               ("InFlight -> Pending",   CreateDeliveryInState(DeliveryState.InFlight),  d => d.ScheduleRetry(Now.AddMinutes(5))),
+              ("InFlight -> Cancelled", CreateDeliveryInState(DeliveryState.InFlight),  d => d.Cancel(Now)),
               ("Blocked -> Pending",    CreateDeliveryInState(DeliveryState.Blocked),   d => d.Unblock()),
               ("Blocked -> Cancelled",  CreateDeliveryInState(DeliveryState.Blocked),   d => d.Cancel(Now)),
               ("Succeeded -> Pending",  CreateDeliveryInState(DeliveryState.Succeeded), d => d.Reopen(Now)),
@@ -356,9 +357,16 @@ public sealed class DeliveryTests
     }
 
     [Fact]
-    public void Cancel_GivenAnInFlightDelivery_Throws()
+    public void Cancel_GivenAnInFlightDelivery_AbandonsItAndReleasesTheLease()
     {
-        Should.Throw<InvalidDeliveryTransitionException>(() => CreateDeliveryInState(DeliveryState.InFlight).Cancel(Now));
+        Delivery delivery = CreateDeliveryInState(DeliveryState.InFlight);
+
+        delivery.Cancel(Now.AddSeconds(1));
+
+        delivery.State.ShouldBe(DeliveryState.Cancelled);
+        delivery.CompletedAt.ShouldBe(Now.AddSeconds(1));
+        delivery.LeaseOwner.ShouldBeNull();
+        delivery.LeaseExpiresAt.ShouldBeNull();
     }
 
     [Theory]

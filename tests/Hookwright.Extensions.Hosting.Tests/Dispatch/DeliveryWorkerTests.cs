@@ -45,6 +45,7 @@ public sealed class DeliveryWorkerTests
         completion.DeliveryId.ShouldBe(claimed.DeliveryId);
         completion.State.ShouldBe(DeliveryState.Succeeded);
         completion.CompletedAt.ShouldBe(time.GetUtcNow());
+        completion.Attempt.ShouldNotBeNull();
         completion.Attempt.Outcome.ShouldBe(AttemptOutcome.Succeeded);
         completion.Attempt.ResponseStatusCode.ShouldBe(200);
         completion.Attempt.WorkerId.ShouldBe(Worker);
@@ -67,6 +68,7 @@ public sealed class DeliveryWorkerTests
         completion.State.ShouldBe(DeliveryState.Pending);
         completion.NextAttemptAt.ShouldBe(time.GetUtcNow() + TimeSpan.FromSeconds(5));
         completion.CompletedAt.ShouldBeNull();
+        completion.Attempt.ShouldNotBeNull();
         completion.Attempt.Outcome.ShouldBe(AttemptOutcome.ServerError);
     }
 
@@ -96,7 +98,7 @@ public sealed class DeliveryWorkerTests
 
         completion.ShouldNotBeNull();
         completion.State.ShouldBe(DeliveryState.Failed);
-        completion.RetireEndpoint.ShouldBeTrue();
+        completion.RetirementReason.ShouldBe(DeliveryCompletion.GoneReason);
         logger.Collector.GetSnapshot().ShouldContain(record => record.Level == LogLevel.Information
             && record.Message == $"{Worker} retired endpoint {claimed.EndpointId}. It answered 410 Gone");
     }
@@ -114,6 +116,7 @@ public sealed class DeliveryWorkerTests
 
         completion.ShouldNotBeNull();
         completion.State.ShouldBe(DeliveryState.Failed);
+        completion.Attempt.ShouldNotBeNull();
         completion.Attempt.Outcome.ShouldBe(AttemptOutcome.Unsendable);
         completion.Attempt.ResponseStatusCode.ShouldBeNull();
         completion.Attempt.ErrorDetail.ShouldBe(refusal.Message);
@@ -137,6 +140,7 @@ public sealed class DeliveryWorkerTests
         .AttemptAsync(claimed);
 
         completion.ShouldNotBeNull();
+        completion.Attempt.ShouldNotBeNull();
         completion.Attempt.Outcome.ShouldBe(AttemptOutcome.Unsendable);
         completion.Attempt.ErrorDetail.ShouldBeNull();
     }

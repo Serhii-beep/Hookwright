@@ -1,4 +1,5 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using Hookwright.Core.Configuration;
+using Hookwright.Core.Deliveries;
 using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 
@@ -164,7 +165,7 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         (await worker.Deliveries.CompleteAsync(
             "web-01:4242:a1b2c3", [Completion(claimed, new RetryDecision.Succeeded(), Now.AddSeconds(1))],
             TestContext.Current.CancellationToken))
-            .ShouldBe(1);
+            .Applied.ShouldBe(1);
 
         await using IStoreSession anotherWorker = OpenSession();
         (await anotherWorker.Deliveries.ClaimAsync(
@@ -213,7 +214,7 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         (await stalled.Deliveries.CompleteAsync(
             "web-02:4242:a1b2c3", [Completion(claimed, new RetryDecision.Succeeded(), Now.AddSeconds(1))],
             TestContext.Current.CancellationToken))
-            .ShouldBe(0);
+            .Applied.ShouldBe(0);
 
         DateTimeOffset afterLease = Now + Lease + TimeSpan.FromMinutes(1);
 
@@ -234,10 +235,12 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
             "web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken))
             .ShouldHaveSingleItem();
 
-        await worker.Deliveries.CompleteAsync(
+        CompletionReport report = await worker.Deliveries.CompleteAsync(
             "web-01:4242:a1b2c3",
             [Completion(claimed, new RetryDecision.RetireEndpoint(), Now.AddSeconds(1), AttemptOutcome.Gone, 410)],
             TestContext.Current.CancellationToken);
+
+        report.Retired.ShouldHaveSingleItem().Id.ShouldBe(endpoint.Id);
 
         await using IStoreSession reader = OpenSession();
 
@@ -245,7 +248,8 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
             endpoint.Id, TestContext.Current.CancellationToken)).ShouldNotBeNull();
 
         retired.IsEnabled.ShouldBeFalse();
-        retired.DisabledReason.ShouldBe(DeliveryCompletion.RetirementReason);
+        retired.DisabledReason.ShouldBe(DeliveryCompletion.GoneReason);
+        retired.DisabledAt.ShouldBe(Now.AddSeconds(1));
 
         (await reader.Endpoints.ListForSubscriberAsync(
             endpoint.SubscriberId, TestContext.Current.CancellationToken))
@@ -273,7 +277,7 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
                 Completion(claimed[2], new RetryDecision.Fail(), Now.AddSeconds(1), AttemptOutcome.Rejected, 400)
             ],
             TestContext.Current.CancellationToken))
-            .ShouldBe(3);
+            .Applied.ShouldBe(3);
 
         await using IStoreSession early = OpenSession();
         (await early.Deliveries.ClaimAsync(
@@ -287,6 +291,95 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
 
         retried.DeliveryId.ShouldBe(claimed[1].DeliveryId);
         retried.AttemptCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenADeferral_ReturnsTheDeliveryToTheQueueWithItsAttemptGivenBack()
+    {
+        await SeedAsync(1);
+        DateTimeOffset dueAt = Now.AddSeconds(30);
+
+        await using IStoreSession worker = OpenSession();
+        ClaimedDelivery claimed = (await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem();
+
+        (await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [DeliveryCompletion.Deferred(claimed, dueAt)], TestContext.Current.CancellationToken))
+            .Applied.ShouldBe(1);
+
+        await using IStoreSession early = OpenSession();
+        (await early.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, dueAt.AddSeconds(-1), TestContext.Current.CancellationToken))
+            .ShouldBeEmpty();
+
+        await using IStoreSession due = OpenSession();
+        (await due.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, dueAt, TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem()
+            .AttemptCount.ShouldBe(1);
+
+        (await CountAttemptsAsync(due)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenACancellation_AbandonsTheDeliveryWithoutAnAttempt()
+    {
+        await SeedAsync(1);
+
+        await using IStoreSession worker = OpenSession();
+        ClaimedDelivery claimed = (await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken))
+            .ShouldHaveSingleItem();
+
+        (await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [DeliveryCompletion.Cancelled(claimed, Now.AddSeconds(1))], TestContext.Current.CancellationToken))
+            .Applied.ShouldBe(1);
+
+        await using IStoreSession later = OpenSession();
+        (await later.Deliveries.ClaimAsync(
+            "web-02:4242:a1b2c3", 10, Lease, Now.AddHours(1), TestContext.Current.CancellationToken))
+            .ShouldBeEmpty();
+        (await later.Deliveries.ReclaimExpiredLeasesAsync(
+            Now + Lease + TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken))
+            .ShouldBeEmpty();
+        (await CountAttemptsAsync(later)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenARetirement_DisablesTheEndpointForTheReasonAndReportsItOnce()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, TestContext.Current.CancellationToken);
+        claimed.Count.ShouldBe(2);
+
+        CompletionReport first = await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [Retirement(claimed[0], "The endpoint has failed continuously since 2025-12-27.", Now.AddSeconds(1))],
+            TestContext.Current.CancellationToken);
+
+        first.Applied.ShouldBe(1);
+        first.Retired.ShouldHaveSingleItem().Id.ShouldBe(endpoint.Id);
+
+        CompletionReport second = await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [Retirement(claimed[1], "The endpoint has failed continuously since 2025-12-28.", Now.AddSeconds(2))],
+            TestContext.Current.CancellationToken);
+
+        second.Applied.ShouldBe(1);
+        second.Retired.ShouldBeEmpty();
+
+        await using IStoreSession reader = OpenSession();
+        WebhookEndpoint retired = (await reader.Endpoints.FindAsync(
+            endpoint.Id, TestContext.Current.CancellationToken)).ShouldNotBeNull();
+
+        retired.IsEnabled.ShouldBeFalse();
+        retired.DisabledReason.ShouldBe("The endpoint has failed continuously since 2025-12-27.");
+        retired.DisabledAt.ShouldBe(Now.AddSeconds(1));
+        (await CountAttemptsAsync(reader)).ShouldBe(2);
     }
 
     [Fact]
@@ -411,5 +504,28 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
             null, at, TimeSpan.FromMilliseconds(20), "web-01:4242:a1b2c3");
 
         return DeliveryCompletion.From(claimed, attempt, decision, at);
+    }
+
+    private static DeliveryCompletion Retirement(ClaimedDelivery claimed, string reason, DateTimeOffset at)
+    {
+        DeliveryAttempt attempt = DeliveryAttempt.FromResponse(
+            claimed.DeliveryId, AttemptOutcome.ServerError, 503, "body",
+            null, at, TimeSpan.FromMilliseconds(20), "web-01:4242:a1b2c3");
+
+        return DeliveryCompletion.Retiring(claimed, attempt, reason, at);
+    }
+
+    private static async Task<int> CountAttemptsAsync(IStoreSession session)
+    {
+        RetentionOptions options = new()
+        {
+            Attempts = TimeSpan.FromTicks(1),
+            Events = TimeSpan.FromTicks(1),
+            DeadDeliveries = TimeSpan.FromTicks(1)
+        };
+
+        return (await session.Retention.PruneAsync(
+            RetentionCutoffs.From(options, Now.AddYears(1)), 1000, TestContext.Current.CancellationToken))
+            .Attempts;
     }
 }

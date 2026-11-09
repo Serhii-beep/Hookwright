@@ -35,7 +35,7 @@ public sealed class DeliveryCompletionTests
         completion.State.ShouldBe(DeliveryState.Succeeded);
         completion.CompletedAt.ShouldBe(Now);
         completion.NextAttemptAt.ShouldBeNull();
-        completion.RetireEndpoint.ShouldBeFalse();
+        completion.RetirementReason.ShouldBeNull();
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class DeliveryCompletionTests
             Claimed(), Attempt(), new RetryDecision.Fail(), Now);
 
         completion.State.ShouldBe(DeliveryState.Failed);
-        completion.RetireEndpoint.ShouldBeFalse();
+        completion.RetirementReason.ShouldBeNull();
     }
 
     [Fact]
@@ -78,7 +78,71 @@ public sealed class DeliveryCompletionTests
             Claimed(), Attempt(), new RetryDecision.RetireEndpoint(), Now);
 
         completion.State.ShouldBe(DeliveryState.Failed);
-        completion.RetireEndpoint.ShouldBeTrue();
+        completion.RetirementReason.ShouldBe(DeliveryCompletion.GoneReason);
+    }
+
+    [Fact]
+    public void From_Always_CarriesTheAttemptAndKeepsTheClaimsAttemptCounted()
+    {
+        DeliveryAttempt attempt = Attempt();
+
+        DeliveryCompletion completion = DeliveryCompletion.From(Claimed(), attempt, new RetryDecision.Succeeded(), Now);
+
+        completion.Attempt.ShouldBeSameAs(attempt);
+        completion.GivesBackAttempt.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Deferred_Always_ReturnsTheDeliveryToTheQueueUnattemptedWithItsAttemptGivenBack()
+    {
+        ClaimedDelivery claimed = Claimed();
+        DateTimeOffset dueAt = Now.AddSeconds(30);
+
+        DeliveryCompletion completion = DeliveryCompletion.Deferred(claimed, dueAt);
+
+        completion.DeliveryId.ShouldBe(claimed.DeliveryId);
+        completion.EndpointId.ShouldBe(claimed.EndpointId);
+        completion.State.ShouldBe(DeliveryState.Pending);
+        completion.NextAttemptAt.ShouldBe(dueAt);
+        completion.CompletedAt.ShouldBeNull();
+        completion.Attempt.ShouldBeNull();
+        completion.GivesBackAttempt.ShouldBeTrue();
+        completion.RetirementReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Cancelled_Always_AbandonsTheDeliveryUnattempted()
+    {
+        DeliveryCompletion completion = DeliveryCompletion.Cancelled(Claimed(), Now);
+
+        completion.State.ShouldBe(DeliveryState.Cancelled);
+        completion.CompletedAt.ShouldBe(Now);
+        completion.NextAttemptAt.ShouldBeNull();
+        completion.Attempt.ShouldBeNull();
+        completion.GivesBackAttempt.ShouldBeFalse();
+        completion.RetirementReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Retiring_Always_RecordsTheAttemptAbandonsTheDeliveryAndNamesTheReason()
+    {
+        DeliveryAttempt attempt = Attempt();
+
+        DeliveryCompletion completion = DeliveryCompletion.Retiring(
+            Claimed(), attempt, "The endpoint has failed continuously since 2025-12-27.", Now);
+
+        completion.State.ShouldBe(DeliveryState.Cancelled);
+        completion.CompletedAt.ShouldBe(Now);
+        completion.NextAttemptAt.ShouldBeNull();
+        completion.Attempt.ShouldBeSameAs(attempt);
+        completion.GivesBackAttempt.ShouldBeFalse();
+        completion.RetirementReason.ShouldBe("The endpoint has failed continuously since 2025-12-27.");
+    }
+
+    [Fact]
+    public void Retiring_GivenABlankReason_Throws()
+    {
+        Should.Throw<ArgumentException>(() => DeliveryCompletion.Retiring(Claimed(), Attempt(), "   ", Now));
     }
 
     [Fact]

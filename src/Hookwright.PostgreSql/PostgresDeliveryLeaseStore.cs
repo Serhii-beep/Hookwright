@@ -79,6 +79,7 @@ public sealed class PostgresDeliveryLeaseStore : EfDeliveryLeaseStore
         short[] states = [.. completions.Select(completion => (short)completion.State)];
         DateTimeOffset?[] nextAttemptAt = [.. completions.Select(completion => completion.NextAttemptAt?.ToUniversalTime())];
         DateTimeOffset?[] completedAt = [.. completions.Select(completion => completion.CompletedAt?.ToUniversalTime())];
+        int[] attemptsGivenBack = [.. completions.Select(completion => completion.GivesBackAttempt ? 1 : 0)];
 
         return await Context.Database
             .ExecuteSqlAsync($"""
@@ -87,9 +88,10 @@ public sealed class PostgresDeliveryLeaseStore : EfDeliveryLeaseStore
                     next_attempt_at = COALESCE(v.next_attempt_at, d.next_attempt_at),
                     completed_at = v.completed_at,
                     lease_owner = NULL,
-                    lease_expires_at = NULL
-                FROM unnest({ids}, {states}, {nextAttemptAt}, {completedAt})
-                    AS v(id, state, next_attempt_at, completed_at)
+                    lease_expires_at = NULL,
+                    attempt_count = d.attempt_count - v.attempts_given_back
+                FROM unnest({ids}, {states}, {nextAttemptAt}, {completedAt}, {attemptsGivenBack})
+                    AS v(id, state, next_attempt_at, completed_at, attempts_given_back)
                 WHERE d.id = v.id AND d.lease_owner = {leaseOwner}
             """, cancellationToken).ConfigureAwait(false);
     }

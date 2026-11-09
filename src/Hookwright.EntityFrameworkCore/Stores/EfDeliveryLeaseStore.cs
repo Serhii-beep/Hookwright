@@ -37,7 +37,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public async Task<int> CompleteAsync(
+    public async Task<CompletionReport> CompleteAsync(
         string leaseOwner,
         IReadOnlyList<DeliveryCompletion> completions,
         CancellationToken cancellationToken)
@@ -47,7 +47,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
 
         if (completions.Count == 0)
         {
-            return 0;
+            return new CompletionReport(0, []);
         }
 
         IDbContextTransaction? transaction = Context.Database.CurrentTransaction is null
@@ -57,13 +57,9 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
         try
         {
             int applied = await UpdateDeliveriesAsync(leaseOwner, completions, cancellationToken).ConfigureAwait(false);
+            List<WebhookEndpoint> retired = await RetireAsync(completions, cancellationToken).ConfigureAwait(false);
 
-            foreach (DeliveryCompletion completion in completions.Where(candidate => candidate.RetireEndpoint))
-            {
-                await RetireAsync(completion, cancellationToken).ConfigureAwait(false);
-            }
-
-            Context.AddRange(completions.Select(completion => completion.Attempt));
+            Context.AddRange(completions.Select(completion => completion.Attempt).OfType<DeliveryAttempt>());
             await Context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
             if (transaction is not null)
@@ -71,7 +67,7 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            return applied;
+            return new CompletionReport(applied, retired);
         }
         finally
         {
@@ -238,6 +234,8 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
         string leaseOwner,
         CancellationToken cancellationToken)
     {
+        int attemptsGivenBack = completion.GivesBackAttempt ? 1 : 0;
+
         return await GuardedByLease(completion, leaseOwner)
             .ExecuteUpdateAsync(
                 setters => setters
@@ -245,7 +243,8 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                     .SetProperty(delivery => delivery.NextAttemptAt, nextAttemptAt)
                     .SetProperty(delivery => delivery.CompletedAt, (DateTimeOffset?)null)
                     .SetProperty(delivery => delivery.LeaseOwner, (string?)null)
-                    .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null),
+                    .SetProperty(delivery => delivery.LeaseExpiresAt, (DateTimeOffset?)null)
+                    .SetProperty(delivery => delivery.AttemptCount, delivery => delivery.AttemptCount - attemptsGivenBack),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -278,12 +277,48 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
             .Where(delivery => delivery.State == DeliveryState.InFlight && delivery.LeaseExpiresAt <= now);
     }
 
-    private async Task RetireAsync(DeliveryCompletion completion, CancellationToken cancellationToken)
+    private async Task<List<WebhookEndpoint>> RetireAsync(
+        IReadOnlyList<DeliveryCompletion> completions,
+        CancellationToken cancellationToken)
     {
-        WebhookEndpoint? endpoint = await Context.Set<WebhookEndpoint>()
-            .SingleOrDefaultAsync(candidate => candidate.Id == completion.EndpointId, cancellationToken)
-            .ConfigureAwait(false);
+        Dictionary<WebhookEndpointId, (string Reason, DateTimeOffset At)> retiring = [];
 
-        endpoint?.Disable(DeliveryCompletion.RetirementReason, completion.Attempt.AttemptedAt);
+        foreach (DeliveryCompletion completion in completions)
+        {
+            if (completion.RetirementReason is { } reason)
+            {
+                DateTimeOffset at = completion.CompletedAt
+                    ?? throw new InvalidOperationException(
+                        $"Completion of {completion.DeliveryId} retires its endpoint without finishing the delivery.");
+
+                retiring.TryAdd(completion.EndpointId, (reason, at));
+            }
+        }
+
+        if (retiring.Count == 0)
+        {
+            return [];
+        }
+
+        WebhookEndpointId[] ids = [.. retiring.Keys];
+        List<WebhookEndpoint> endpoints = await Context.Set<WebhookEndpoint>()
+            .Where(endpoint => ids.Contains(endpoint.Id))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        List<WebhookEndpoint> retired = [];
+
+        foreach (WebhookEndpoint endpoint in endpoints)
+        {
+            if (!endpoint.IsEnabled)
+            {
+                continue;
+            }
+
+            (string reason, DateTimeOffset at) = retiring[endpoint.Id];
+            endpoint.Disable(reason, at);
+            retired.Add(endpoint);
+        }
+
+        return retired;
     }
 }

@@ -14,6 +14,7 @@ public sealed class DeliveryStateMachineTests
         (DeliveryState.InFlight, DeliveryState.Failed),
         (DeliveryState.InFlight, DeliveryState.Dead),
         (DeliveryState.InFlight, DeliveryState.Pending),
+        (DeliveryState.InFlight, DeliveryState.Cancelled),
 
         (DeliveryState.Blocked, DeliveryState.Pending),
         (DeliveryState.Blocked, DeliveryState.Cancelled),

@@ -25,7 +25,7 @@ internal sealed class SessionPerCallLeaseStore : IDeliveryLeaseStore
         return WithStoreAsync(store => store.ClaimAsync(leaseOwner, batchSize, leaseDuration, now, cancellationToken));
     }
 
-    public Task<int> CompleteAsync(string leaseOwner, IReadOnlyList<DeliveryCompletion> completions, CancellationToken cancellationToken)
+    public Task<CompletionReport> CompleteAsync(string leaseOwner, IReadOnlyList<DeliveryCompletion> completions, CancellationToken cancellationToken)
     {
         return WithStoreAsync(store => store.CompleteAsync(leaseOwner, completions, cancellationToken));
     }

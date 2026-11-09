@@ -271,8 +271,9 @@ public sealed class Delivery
     /// Abandons this delivery because its endpoint was deleted or disabled.
     /// </summary>
     /// <remarks>
-    /// An in-flight delivery cannot be cancelled, so a bulk cancellation for a deleted
-    /// endpoint has to leave those rows alone and let them finish.
+    /// From the queue, or by the worker holding it, which cancels rather than sends once it
+    /// sees the endpoint is disabled. A bulk cancellation still leaves in-flight rows to their
+    /// worker: it will cancel or finish them, and must not find them changed underneath it.
     /// </remarks>
     /// <exception cref="InvalidDeliveryTransitionException">The delivery cannot be cancelled.</exception>
     public void Cancel(DateTimeOffset completedAt)
