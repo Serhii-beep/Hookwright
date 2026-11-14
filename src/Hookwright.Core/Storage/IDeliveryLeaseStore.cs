@@ -49,9 +49,12 @@ public interface IDeliveryLeaseStore
     /// so it is dropped - and the shortfall in the report makes that visible rather than
     /// silent. An attempt record is appended either way: the request really was made, and
     /// that row is what later explains a duplicate the consumer received. A completion that
-    /// gives the claim's attempt back also lowers the attempt counter the claim raised. An
-    /// endpoint a completion asks to retire is disabled for the reason given, and the report
-    /// names it unless it was disabled already.
+    /// gives the claim's attempt back also lowers the attempt counter the claim raised. Each
+    /// attempt counts for or against its endpoint's health: an answer, accepted or refused,
+    /// ends the endpoint's run of failures. A retryable failure extends it and starts its clock
+    /// if it was not running. The persisted health follows the count. An endpoint a completion
+    /// asks to retire is disabled for the reason given, and the report names it unless it was
+    /// disabled already.
     /// </remarks>
     Task<CompletionReport> CompleteAsync(
         string leaseOwner,

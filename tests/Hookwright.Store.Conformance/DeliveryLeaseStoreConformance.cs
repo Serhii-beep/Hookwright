@@ -386,6 +386,138 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         (await CountAttemptsAsync(reader)).ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData(2, EndpointHealth.Healthy)]
+    [InlineData(3, EndpointHealth.Degraded)]
+    [InlineData(10, EndpointHealth.Failing)]
+    public async Task CompleteAsync_GivenFailures_CountsThemAgainstTheEndpointFromTheFirst(int failures, EndpointHealth expected)
+    {
+        WebhookEndpoint endpoint = await SeedAsync(failures);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", failures, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [.. claimed.Select((delivery, i) => Failure(delivery, Now.AddSeconds(i + 1)))],
+            TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.ConsecutiveFailures.ShouldBe(failures);
+        found.FailingSince.ShouldBe(Now.AddSeconds(1));
+        found.Health.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenFailuresInSeparateBatches_AddsThemToWhatTheEndpointHad()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[0], Now.AddSeconds(1))], TestContext.Current.CancellationToken);
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[1], Now.AddSeconds(2))], TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.ConsecutiveFailures.ShouldBe(2);
+        found.FailingSince.ShouldBe(Now.AddSeconds(1));
+        found.Health.ShouldBe(EndpointHealth.Healthy);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenAnAnswer_EndsTheEndpointsRunOfFailures()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[0], Now.AddSeconds(1))], TestContext.Current.CancellationToken);
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [Completion(claimed[1], new RetryDecision.Fail(), Now.AddSeconds(2), AttemptOutcome.Rejected, 403)],
+            TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.ConsecutiveFailures.ShouldBe(0);
+        found.FailingSince.ShouldBeNull();
+        found.Health.ShouldBe(EndpointHealth.Healthy);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenABatchInWhichTheEndpointAnswersThenFails_KeepsOnlyWhatFollowedTheAnswer()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(4);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 4, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[0], Now.AddSeconds(1))], TestContext.Current.CancellationToken);
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [
+                Failure(claimed[3], Now.AddSeconds(4)),
+                Completion(claimed[2], new RetryDecision.Succeeded(), Now.AddSeconds(3)),
+                Failure(claimed[1], Now.AddSeconds(2))
+            ],
+            TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.ConsecutiveFailures.ShouldBe(1);
+        found.FailingSince.ShouldBe(Now.AddSeconds(4));
+        found.Health.ShouldBe(EndpointHealth.Healthy);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenAnAttemptThatSaysNothingAboutTheEndpoint_LeavesItsHealthAlone()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[0], Now.AddSeconds(1))], TestContext.Current.CancellationToken);
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Unsendable(claimed[1], Now.AddSeconds(2))], TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.ConsecutiveFailures.ShouldBe(1);
+        found.FailingSince.ShouldBe(Now.AddSeconds(1));
+    }
+
+    [Fact]
+    public async Task CompleteAsync_GivenADisabledEndpoint_LeavesItsHealthAlone()
+    {
+        WebhookEndpoint endpoint = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 2, Lease, Now, TestContext.Current.CancellationToken);
+
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [Retirement(claimed[0], "The endpoint has failed continuously since 2025-12-27.", Now.AddSeconds(1))],
+            TestContext.Current.CancellationToken);
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3", [Failure(claimed[1], Now.AddSeconds(2))], TestContext.Current.CancellationToken);
+
+        WebhookEndpoint found = await FindAsync(endpoint.Id);
+        found.Health.ShouldBe(EndpointHealth.Disabled);
+        found.ConsecutiveFailures.ShouldBe(1);
+        found.FailingSince.ShouldBe(Now.AddSeconds(1));
+    }
+
     [Fact]
     public async Task ReclaimExpiredLeasesAsync_GivenALiveLease_LeavesItAlone()
     {
@@ -517,6 +649,26 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
             null, at, TimeSpan.FromMilliseconds(20), "web-01:4242:a1b2c3");
 
         return DeliveryCompletion.Retiring(claimed, attempt, reason, at);
+    }
+
+    private static DeliveryCompletion Failure(ClaimedDelivery claimed, DateTimeOffset at)
+    {
+        return Completion(claimed, new RetryDecision.Retry(at.AddMinutes(5)), at, AttemptOutcome.ServerError, 503);
+    }
+
+    private static DeliveryCompletion Unsendable(ClaimedDelivery claimed, DateTimeOffset at)
+    {
+        DeliveryAttempt attempt = DeliveryAttempt.FromFailure(
+            claimed.DeliveryId, AttemptOutcome.Unsendable, "no key", at, TimeSpan.FromMilliseconds(1), "web-01:4242:a1b2c3");
+
+        return DeliveryCompletion.From(claimed, attempt, new RetryDecision.Fail(), at);
+    }
+
+    private async Task<WebhookEndpoint> FindAsync(WebhookEndpointId endpointId)
+    {
+        await using IStoreSession reader = OpenSession();
+
+        return (await reader.Endpoints.FindAsync(endpointId, TestContext.Current.CancellationToken)).ShouldNotBeNull();
     }
 
     private static async Task<int> CountAttemptsAsync(IStoreSession session)
