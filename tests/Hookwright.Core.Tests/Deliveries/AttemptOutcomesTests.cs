@@ -109,6 +109,37 @@ public sealed class AttemptOutcomesTests
         AttemptOutcomes.IsRetryable(AttemptOutcome.Unsendable).ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData(AttemptOutcome.Succeeded, HealthSignal.Answered)]
+    [InlineData(AttemptOutcome.Rejected, HealthSignal.Answered)]
+    [InlineData(AttemptOutcome.ServerError, HealthSignal.Failed)]
+    [InlineData(AttemptOutcome.Throttled, HealthSignal.Failed)]
+    [InlineData(AttemptOutcome.TimedOut, HealthSignal.Failed)]
+    [InlineData(AttemptOutcome.ConnectionFailed, HealthSignal.Failed)]
+    [InlineData(AttemptOutcome.Blocked, HealthSignal.Failed)]
+    [InlineData(AttemptOutcome.Gone, HealthSignal.None)]
+    [InlineData(AttemptOutcome.Unsendable, HealthSignal.None)]
+    public void HealthSignalOf_Always_ReadsAnAnswerAsUpAndARetryableFailureAsDown(AttemptOutcome outcome, HealthSignal expected)
+    {
+        AttemptOutcomes.HealthSignalOf(outcome).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void HealthSignalOf_Always_DecidesEveryDefinedOutcome()
+    {
+        foreach (AttemptOutcome outcome in Enum.GetValues<AttemptOutcome>())
+        {
+            Should.NotThrow(() => AttemptOutcomes.HealthSignalOf(outcome));
+        }
+    }
+
+    [Fact]
+    public void HealthSignalOf_GivenAnUndefinedOutcome_Throws()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(
+            () => AttemptOutcomes.HealthSignalOf((AttemptOutcome)short.MaxValue));
+    }
+
     [Fact]
     public void RetiresEndpoint_Always_AppliesOnlyToGone()
     {

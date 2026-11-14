@@ -442,6 +442,10 @@ dotnet_diagnostic.CA5394.severity = none
 [src/Hookwright.Core/Deliveries/RetryDecision.cs]
 dotnet_diagnostic.CA1034.severity = none
 
+# Admission is the same kind of closed hierarchy, for the same reasons.
+[src/Hookwright.Core/Endpoints/Admission.cs]
+dotnet_diagnostic.CA1034.severity = none
+
 [**/*StoreConformance.cs]
 dotnet_diagnostic.CA2000.severity = none
 
