@@ -16,6 +16,11 @@ public sealed class HookwrightOptions
     public RetryOptions Retry { get; } = new();
 
     /// <summary>
+    /// How an endpoint's circuit behaves once the endpoint fails.
+    /// </summary>
+    public CircuitOptions Circuit { get; } = new();
+
+    /// <summary>
     /// What is accepted at publish time, and where deliveries may go.
     /// </summary>
     public SecurityOptions Security { get; } = new();
@@ -35,6 +40,7 @@ public sealed class HookwrightOptions
 
         Collect(problems, nameof(Delivery), Delivery.Validate());
         Collect(problems, nameof(Retry), Retry.Validate());
+        Collect(problems, nameof(Circuit), Circuit.Validate());
         Collect(problems, nameof(Security), Security.Validate());
         Collect(problems, nameof(Retention), Retention.Validate());
 

@@ -350,6 +350,33 @@ public sealed class EndpointCircuitTests
         circuit.InFlight.ShouldBe(0);
     }
 
+    [Fact]
+    public void Admits_GivenAFreeSlot_SaysSoWithoutTakingIt()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 1);
+
+        circuit.Admits(Now).ShouldBeTrue();
+        circuit.InFlight.ShouldBe(0);
+
+        circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>();
+
+        circuit.Admits(Now).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Admits_GivenAnOpenCircuit_SaysSoOnlyOnceTheCooldownIsOverAndNoProbeIsOut()
+    {
+        EndpointCircuit circuit = Open();
+        DateTimeOffset reopened = Now + Cooldown;
+
+        circuit.Admits(reopened - TimeSpan.FromTicks(1)).ShouldBeFalse();
+        circuit.Admits(reopened).ShouldBeTrue();
+
+        circuit.TryAdmit(reopened).ShouldBe(new Admission.Granted(isProbe: true));
+
+        circuit.Admits(reopened).ShouldBeFalse();
+    }
+
     private static EndpointCircuit Circuit(int concurrency = Concurrency, int failures = 0, DateTimeOffset? failingSince = null)
     {
         return new EndpointCircuit(concurrency, Cooldown, DisableAfter, failures, failingSince);

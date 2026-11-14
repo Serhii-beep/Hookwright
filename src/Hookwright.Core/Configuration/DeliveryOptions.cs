@@ -32,7 +32,9 @@ public sealed class DeliveryOptions
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Connection pool limit per destination host. Default 8.
+    /// The most connections open to one destination host, and so the most deliveries
+    /// in flight to one endpoint at once: a worker past that would only wait for a
+    /// connection, holding its place in the pool. Default 8.
     /// </summary>
     public int MaxConnectionsPerEndpoint { get; set; } = 8;
 

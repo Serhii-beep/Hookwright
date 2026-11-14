@@ -25,14 +25,16 @@ public sealed class HookwrightOptionsTests
         HookwrightOptions options = new();
         options.Delivery.BatchSize = 0;
         options.Retry.MaxDelay = TimeSpan.Zero;
+        options.Circuit.Cooldown = TimeSpan.Zero;
         options.Security.MaxPayloadBytes = 0;
         options.Retention.Events = TimeSpan.Zero;
 
         IReadOnlyList<string> problems = options.Validate();
 
-        problems.Count.ShouldBeGreaterThanOrEqualTo(4);
+        problems.Count.ShouldBeGreaterThanOrEqualTo(5);
         problems.ShouldContain(p => p.StartsWith("Delivery: ", StringComparison.Ordinal));
         problems.ShouldContain(p => p.StartsWith("Retry: ", StringComparison.Ordinal));
+        problems.ShouldContain(p => p.StartsWith("Circuit: ", StringComparison.Ordinal));
         problems.ShouldContain(p => p.StartsWith("Security: ", StringComparison.Ordinal));
         problems.ShouldContain(p => p.StartsWith("Retention: ", StringComparison.Ordinal));
     }

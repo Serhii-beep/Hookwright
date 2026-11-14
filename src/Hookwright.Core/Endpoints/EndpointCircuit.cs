@@ -162,6 +162,18 @@ public sealed class EndpointCircuit
     }
 
     /// <summary>
+    /// Whether <see cref="TryAdmit"/> would admit a delivery now, without taking a slot.
+    /// </summary>
+    /// <param name="now">The current instant.</param>
+    public bool Admits(DateTimeOffset now)
+    {
+        lock (_gate)
+        {
+            return _open ? !_probing && now >= _reopensAt : _inFlight < _limit;
+        }
+    }
+
+    /// <summary>
     /// Asks to send one delivery to the endpoint now.
     /// </summary>
     /// <param name="now">The current instant.</param>
