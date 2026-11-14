@@ -1,3 +1,5 @@
+using Hookwright.Core.Endpoints;
+
 namespace Hookwright.Core.Storage;
 
 /// <summary>
@@ -33,6 +35,28 @@ public interface IDeliveryLeaseStore
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Atomically takes up to <paramref name="batchSize"/> due deliveries under a lease, leaving
+    /// those for <paramref name="excludedEndpoints"/> in the queue.
+    /// </summary>
+    /// <param name="leaseOwner">Identifies this worker, as <c>{machine}:{pid}:{id}</c>.</param>
+    /// <param name="batchSize">Maximum deliveries to take.</param>
+    /// <param name="leaseDuration">How long the claim holds before it may be reclaimed.</param>
+    /// <param name="now">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
+    /// <param name="excludedEndpoints">
+    /// Endpoints the caller cannot send to right now. Their due deliveries are passed over in
+    /// favour of everyone else's.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>The claimed deliveries, empty when nothing else is due.</returns>
+    Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+        string leaseOwner,
+        int batchSize,
+        TimeSpan leaseDuration,
+        DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
         CancellationToken cancellationToken);
 
     /// <summary>

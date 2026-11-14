@@ -1,4 +1,7 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using System.Text.Json;
+
+using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore;
 using Hookwright.EntityFrameworkCore.Stores;
@@ -27,14 +30,20 @@ public sealed class SqliteDeliveryLeaseStore : EfDeliveryLeaseStore
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
+        ArgumentNullException.ThrowIfNull(excludedEndpoints);
 
         long dueBy = now.UtcDateTime.Ticks;
         long leaseExpiresAt = (now + leaseDuration).UtcDateTime.Ticks;
+
+        string excluded = JsonSerializer.Serialize(
+            excludedEndpoints.Select(endpoint => endpoint.Value.ToString().ToUpperInvariant()));
+
         List<Guid> taken = await Context.Database
             .SqlQuery<Guid>($"""
                 UPDATE hookwright_deliveries
@@ -47,6 +56,7 @@ public sealed class SqliteDeliveryLeaseStore : EfDeliveryLeaseStore
                     FROM hookwright_deliveries
                     WHERE state = {(short)DeliveryState.Pending}
                         AND next_attempt_at <= {dueBy}
+                        AND endpoint_id NOT IN (SELECT value from json_each({excluded}))
                     ORDER BY next_attempt_at
                     LIMIT {batchSize})
                 RETURNING id AS Value

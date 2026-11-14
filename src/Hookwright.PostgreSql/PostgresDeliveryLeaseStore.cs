@@ -1,4 +1,5 @@
 ﻿using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore.Stores;
 
@@ -26,14 +27,17 @@ public sealed class PostgresDeliveryLeaseStore : EfDeliveryLeaseStore
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
+        ArgumentNullException.ThrowIfNull(excludedEndpoints);
 
         DateTimeOffset dueBy = now.ToUniversalTime();
         DateTimeOffset leaseExpiresAt = (now + leaseDuration).ToUniversalTime();
+        Guid[] excluded = [.. excludedEndpoints.Select(endpoint => endpoint.Value)];
 
         List<Guid> taken = await Context.Database
             .SqlQuery<Guid>($"""
@@ -42,6 +46,7 @@ public sealed class PostgresDeliveryLeaseStore : EfDeliveryLeaseStore
                     FROM hookwright_deliveries
                     WHERE state = {(short)DeliveryState.Pending}
                         AND next_attempt_at <= {dueBy}
+                        AND endpoint_id <> ALL({excluded})
                     ORDER BY next_attempt_at
                     LIMIT {batchSize}
                     FOR UPDATE SKIP LOCKED)

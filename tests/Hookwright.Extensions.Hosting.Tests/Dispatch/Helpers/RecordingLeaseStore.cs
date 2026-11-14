@@ -1,5 +1,6 @@
 ﻿using System.Threading.Channels;
 
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 
 namespace Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
@@ -15,6 +16,8 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
     private readonly Channel<DateTimeOffset> _reaped = Channel.CreateUnbounded<DateTimeOffset>();
 
     public List<ClaimCall> Claims { get; } = [];
+
+    public List<IReadOnlyCollection<WebhookEndpointId>> Excluded { get; } = [];
 
     public List<CompleteCall> Completions { get; } = [];
 
@@ -59,6 +62,11 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         }
     }
 
+    public void MakeDue(ClaimedDelivery delivery)
+    {
+        _due.Enqueue(delivery);
+    }
+
     public Task<ClaimCall> NextClaimAsync(CancellationToken cancellationToken)
     {
         return _claimed.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(Patience, cancellationToken);
@@ -81,11 +89,23 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        return ClaimAsync(leaseOwner, batchSize, leaseDuration, now, [], cancellationToken);
+    }
+
+    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+        string leaseOwner,
+        int batchSize,
+        TimeSpan leaseDuration,
+        DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+        CancellationToken cancellationToken)
+    {
         ClaimCall call = new(leaseOwner, batchSize, leaseDuration, now);
 
         lock (_gate)
         {
             Claims.Add(call);
+            Excluded.Add(excludedEndpoints);
             Calls.Add("claim");
         }
 
@@ -99,9 +119,20 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
             return Task.FromException<IReadOnlyList<ClaimedDelivery>>(failure);
         }
 
-        while (taken.Count < batchSize && _due.TryDequeue(out ClaimedDelivery? delivery))
+        int waiting = _due.Count;
+
+        for (int i = 0; i < waiting; i++)
         {
-            taken.Add(delivery);
+            ClaimedDelivery delivery = _due.Dequeue();
+
+            if (taken.Count < batchSize && !excludedEndpoints.Contains(delivery.EndpointId))
+            {
+                taken.Add(delivery);
+            }
+            else
+            {
+                _due.Enqueue(delivery);
+            }
         }
 
         _claimed.Writer.TryWrite(call);

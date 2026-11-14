@@ -40,6 +40,26 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
     }
 
     [Fact]
+    public async Task ClaimAsync_GivenExcludedEndpoints_LeavesTheirDeliveriesForALaterClaim()
+    {
+        WebhookEndpoint first = await SeedAsync(2);
+        WebhookEndpoint second = await SeedAsync(2);
+
+        await using IStoreSession worker = OpenSession();
+        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, [first.Id], TestContext.Current.CancellationToken);
+
+        claimed.Count.ShouldBe(2);
+        claimed.ShouldAllBe(delivery => delivery.EndpointId == second.Id);
+
+        IReadOnlyList<ClaimedDelivery> rest = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, [], TestContext.Current.CancellationToken);
+
+        rest.Count.ShouldBe(2);
+        rest.ShouldAllBe(delivery => delivery.EndpointId == first.Id);
+    }
+
+    [Fact]
     public async Task ClaimAsync_GivenNothingDueYet_ReturnsNothing()
     {
         await SeedAsync(3);

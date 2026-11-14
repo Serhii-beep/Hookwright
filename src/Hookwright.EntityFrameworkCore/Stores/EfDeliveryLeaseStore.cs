@@ -29,11 +29,23 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
     protected DbContext Context { get; }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+        string leaseOwner,
+        int batchSize,
+        TimeSpan leaseDuration,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        return ClaimAsync(leaseOwner, batchSize, leaseDuration, now, [], cancellationToken);
+    }
+
+    /// <inheritdoc />
     public abstract Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />

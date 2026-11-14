@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 
 using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore.Stores;
 
@@ -28,30 +29,45 @@ public sealed class SqlServerDeliveryLeaseStore : EfDeliveryLeaseStore
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
+        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
+        ArgumentNullException.ThrowIfNull(excludedEndpoints);
 
         DateTimeOffset leaseExpiresAt = now + leaseDuration;
 
+        List<object> parameters = [(short)DeliveryState.Pending, now, batchSize, (short)DeliveryState.InFlight, leaseOwner, leaseExpiresAt];
+        string exclusion = string.Empty;
+
+        if (excludedEndpoints.Count > 0)
+        {
+            exclusion = " AND endpoint_id NOT IN ("
+                + string.Join(", ", excludedEndpoints.Select((_, i) => $"{{{parameters.Count + i}}}"))
+                + ")";
+            parameters.AddRange(excludedEndpoints.Select(endpoint => (object)endpoint.Value));
+        }
+
+        string sql = $$"""
+            WITH due AS (
+                SELECT TOP ({2}) id
+                FROM hookwright_deliveries WITH (READPAST, UPDLOCK, ROWLOCK)
+                WHERE state = {0} AND next_attempt_at <= {1}{{exclusion}}
+                ORDER BY next_attempt_at)
+            UPDATE d
+            SET state = {3},
+                lease_owner = {4},
+                lease_expires_at = {5},
+                attempt_count = d.attempt_count + 1
+            OUTPUT inserted.id AS [Value]
+            FROM hookwright_deliveries AS d
+            INNER JOIN due ON d.id = due.id
+            """;
+
         List<Guid> taken = await Context.Database
-            .SqlQuery<Guid>($"""
-                WITH due AS (
-                    SELECT TOP ({batchSize}) id
-                    FROM hookwright_deliveries WITH (READPAST, UPDLOCK, ROWLOCK)
-                    WHERE state = {(short)DeliveryState.Pending} AND next_attempt_at <= {now}
-                    ORDER BY next_attempt_at)
-                UPDATE d
-                SET state = {(short)DeliveryState.InFlight},
-                    lease_owner = {leaseOwner},
-                    lease_expires_at = {leaseExpiresAt},
-                    attempt_count = d.attempt_count + 1
-                OUTPUT inserted.id AS [Value]
-                FROM hookwright_deliveries AS d
-                INNER JOIN due ON d.id = due.id
-            """)
+            .SqlQueryRaw<Guid>(sql, [.. parameters])
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 

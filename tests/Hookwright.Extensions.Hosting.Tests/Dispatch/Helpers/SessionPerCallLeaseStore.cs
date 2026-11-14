@@ -1,4 +1,5 @@
-﻿using Hookwright.Core.Storage;
+﻿using Hookwright.Core.Endpoints;
+using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore;
 using Hookwright.Sqlite;
 
@@ -23,6 +24,17 @@ internal sealed class SessionPerCallLeaseStore : IDeliveryLeaseStore
         CancellationToken cancellationToken)
     {
         return WithStoreAsync(store => store.ClaimAsync(leaseOwner, batchSize, leaseDuration, now, cancellationToken));
+    }
+
+    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    string leaseOwner,
+    int batchSize,
+    TimeSpan leaseDuration,
+    DateTimeOffset now,
+    IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+    CancellationToken cancellationToken)
+    {
+        return WithStoreAsync(store => store.ClaimAsync(leaseOwner, batchSize, leaseDuration, now, excludedEndpoints, cancellationToken));
     }
 
     public Task<CompletionReport> CompleteAsync(string leaseOwner, IReadOnlyList<DeliveryCompletion> completions, CancellationToken cancellationToken)

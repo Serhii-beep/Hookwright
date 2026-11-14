@@ -28,6 +28,7 @@ public sealed class EfDeliveryLeaseStoreTests
             int batchSize,
             TimeSpan leaseDuration,
             DateTimeOffset now,
+            IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
             CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
