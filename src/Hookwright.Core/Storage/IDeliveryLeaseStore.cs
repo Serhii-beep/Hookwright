@@ -60,7 +60,7 @@ public interface IDeliveryLeaseStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Records what a worker concluded abdout a batch of claimed deliveries.
+    /// Records what a worker concluded about a batch of claimed deliveries.
     /// </summary>
     /// <param name="leaseOwner">The worker reporting, used to prove the claims are still its own.</param>
     /// <param name="completions">The conclusions to apply.</param>

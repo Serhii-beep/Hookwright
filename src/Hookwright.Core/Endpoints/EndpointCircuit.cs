@@ -264,6 +264,22 @@ public sealed class EndpointCircuit
         }
     }
 
+    /// <summary>
+    /// Takes the store's word for when the endpoint's run of failures began, where the store knows of
+    /// an answer this circuit did not see.
+    /// </summary>
+    /// <param name="failingSince">When the run on record began, or <see langword="null"/> when none is on record.</param>
+    public void Reconcile(DateTimeOffset? failingSince)
+    {
+        lock (_gate)
+        {
+            if (_failingSince is { } since && (failingSince is null || failingSince > since))
+            {
+                _failingSince = failingSince;
+            }
+        }
+    }
+
     private static int LimitFor(int failures, int maxConcurrency)
     {
         if (failures < DegradeAfter)

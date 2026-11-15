@@ -377,6 +377,59 @@ public sealed class EndpointCircuitTests
         circuit.Admits(reopened).ShouldBeFalse();
     }
 
+    [Fact]
+    public void Reconcile_GivenARecordOfALaterRun_RestartsTheClockThere()
+    {
+        EndpointCircuit circuit = Circuit(failures: 4, failingSince: Now - DisableAfter);
+
+        circuit.Reconcile(Now.AddHours(-1));
+
+        circuit.FailingSince.ShouldBe(Now.AddHours(-1));
+        circuit.ConsecutiveFailures.ShouldBe(4);
+        Fail(circuit, Now).ShouldNotBe(CircuitChange.Exhausted);
+    }
+
+    [Fact]
+    public void Reconcile_GivenNoRunOnRecord_StopsTheClockUntilTheNextFailure()
+    {
+        EndpointCircuit circuit = Circuit(failures: 12, failingSince: Now - DisableAfter);
+
+        circuit.Reconcile(null);
+
+        circuit.FailingSince.ShouldBeNull();
+        circuit.ConsecutiveFailures.ShouldBe(12);
+        circuit.Health.ShouldBe(EndpointHealth.Failing);
+
+        Admission.Granted probe = circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>();
+
+        circuit.Record(probe, AttemptOutcome.TimedOut, Now).ShouldBe(CircuitChange.Opened);
+        circuit.FailingSince.ShouldBe(Now);
+    }
+
+    [Fact]
+    public void Reconcile_GivenARecordOfTheSameRunOrAnEarlierOne_KeepsItsOwnClock()
+    {
+        EndpointCircuit circuit = Circuit(failures: 4, failingSince: Now.AddHours(-1));
+
+        circuit.Reconcile(Now.AddHours(-1));
+        circuit.FailingSince.ShouldBe(Now.AddHours(-1));
+
+        circuit.Reconcile(Now.AddHours(-2));
+        circuit.FailingSince.ShouldBe(Now.AddHours(-1));
+    }
+
+    [Fact]
+    public void Reconcile_GivenACircuitThatIsTimingNoRun_LeavesItThatWay()
+    {
+        EndpointCircuit circuit = Circuit();
+
+        circuit.Reconcile(Now - DisableAfter);
+
+        circuit.FailingSince.ShouldBeNull();
+        Fail(circuit, Now).ShouldBe(CircuitChange.None);
+        circuit.FailingSince.ShouldBe(Now);
+    }
+
     private static EndpointCircuit Circuit(int concurrency = Concurrency, int failures = 0, DateTimeOffset? failingSince = null)
     {
         return new EndpointCircuit(concurrency, Cooldown, DisableAfter, failures, failingSince);
