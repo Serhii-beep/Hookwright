@@ -1,5 +1,6 @@
 ﻿using Hookwright.Core.Deliveries;
 using Hookwright.Core.Endpoints;
+using Hookwright.Core.Subscribers;
 
 using Microsoft.Extensions.Logging;
 
@@ -31,15 +32,39 @@ internal static partial class DispatchLog
     [LoggerMessage(EventId = 22, Level = LogLevel.Error, Message = "{WorkerId} could not attempt {DeliveryId}, which is failed. {Reason}")]
     public static partial void Unsendable(ILogger logger, Exception exception, string workerId, DeliveryId deliveryId, string reason);
 
-    [LoggerMessage(EventId = 23, Level = LogLevel.Information, Message = "{WorkerId} retired endpoint {EndpointId}. It answered 410 Gone")]
-    public static partial void Retired(ILogger logger, string workerId, WebhookEndpointId endpointId);
+    [LoggerMessage(EventId = 23, Level = LogLevel.Information, Message = "{WorkerId} retired endpoint {EndpointId}. {Reason}")]
+    public static partial void Retired(ILogger logger, string workerId, WebhookEndpointId endpointId, string reason);
 
     [LoggerMessage(EventId = 24, Level = LogLevel.Warning, Message = "{WorkerId} stopped before the result of {DeliveryId} could be queued. Its lease will lapse")]
     public static partial void ResultAbandoned(ILogger logger, string workerId, DeliveryId deliveryId);
+
+    [LoggerMessage(EventId = 25, Level = LogLevel.Debug, Message = "{WorkerId} deferred {DeliveryId} until {DueAt}. Endpoint {EndpointId} is {Health}")]
+    public static partial void Deferred(ILogger logger, string workerId, DeliveryId deliveryId, DateTimeOffset dueAt, WebhookEndpointId endpointId, EndpointHealth health);
+
+    [LoggerMessage(EventId = 26, Level = LogLevel.Information, Message = "{WorkerId} cancelled {DeliveryId}. Endpoint {EndpointId} is disabled")]
+    public static partial void Cancelled(ILogger logger, string workerId, DeliveryId deliveryId, WebhookEndpointId endpointId);
 
     [LoggerMessage(EventId = 30, Level = LogLevel.Warning, Message = "{WorkerId} recorded {Applied} of {Count} results. The rest were for leases it no longer held")]
     public static partial void LateResults(ILogger logger, string workerId, int applied, int count);
 
     [LoggerMessage(EventId = 31, Level = LogLevel.Error, Message = "{WorkerId} could not record {Count} results. Their leases will lapse and the deliveries be retried")]
     public static partial void ResultsLost(ILogger logger, Exception exception, string workerId, int count);
+
+    [LoggerMessage(EventId = 32, Level = LogLevel.Warning, Message = "Endpoint {EndpointId} of {SubscriberId} is disabled. {Reason}")]
+    public static partial void EndpointDisabled(ILogger logger, WebhookEndpointId endpointId, SubscriberId subscriberId, string? reason);
+
+    [LoggerMessage(EventId = 33, Level = LogLevel.Error, Message = "The endpoint notifier failed for {EndpointId}. The endpoint is disabled all the same")]
+    public static partial void NotifierFailed(ILogger logger, Exception exception, WebhookEndpointId endpointId);
+
+    [LoggerMessage(EventId = 40, Level = LogLevel.Warning, Message = "Endpoint {EndpointId} has failed {Failures} times in a row. It takes {Limit} deliveries at once from now on")]
+    public static partial void CircuitDegraded(ILogger logger, WebhookEndpointId endpointId, int failures, int limit);
+
+    [LoggerMessage(EventId = 41, Level = LogLevel.Warning, Message = "Endpoint {EndpointId} has failed {Failures} times in a row. Nothing more goes to it before {ReopensAt}")]
+    public static partial void CircuitOpened(ILogger logger, WebhookEndpointId endpointId, int failures, DateTimeOffset? reopensAt);
+
+    [LoggerMessage(EventId = 42, Level = LogLevel.Information, Message = "Endpoint {EndpointId} answered its probe. Deliveries resume one at a time")]
+    public static partial void CircuitClosed(ILogger logger, WebhookEndpointId endpointId);
+
+    [LoggerMessage(EventId = 43, Level = LogLevel.Information, Message = "Endpoint {EndpointId} is back at full concurrency")]
+    public static partial void CircuitRecovered(ILogger logger, WebhookEndpointId endpointId);
 }

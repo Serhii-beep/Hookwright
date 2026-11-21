@@ -29,6 +29,8 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
 
     public Queue<IReadOnlyList<ReclaimedLeases>> ReapAnswers { get; } = new();
 
+    public Queue<IReadOnlyList<WebhookEndpoint>> RetiredAnswers { get; } = new();
+
     public Exception? NextClaimFailure { get; set; }
 
     public Exception? NextCompleteFailure { get; set; }
@@ -163,7 +165,9 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
             throw failure;
         }
 
-        return new CompletionReport(Math.Max(0, completions.Count - CompleteShortfall), []);
+        return new CompletionReport(
+              Math.Max(0, completions.Count - CompleteShortfall),
+              RetiredAnswers.TryDequeue(out IReadOnlyList<WebhookEndpoint>? retired) ? retired : []);
     }
 
     public Task<IReadOnlyList<ReclaimedLeases>> ReclaimExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken)

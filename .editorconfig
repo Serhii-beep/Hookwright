@@ -431,6 +431,11 @@ dotnet_diagnostic.CA1028.severity = none
 [src/Hookwright.Core/Deliveries/RetrySchedule.cs]
 dotnet_diagnostic.CA5394.severity = none
 
+#The jitter on a deferred delivery's due time only spreads out a
+# batch that was turned away together. Predicting it gains nothing.
+[src/Hookwright.Extensions.Hosting/Dispatch/DeliveryWorker.cs]
+dotnet_diagnostic.CA5394.severity = none
+
 #CA1034: Do not nest publicly visible types.
 # RetryDecision is a closed hierarchy - the base constructor is
 # private, and nesting is what makes it closed, since a non-nested type

@@ -16,12 +16,15 @@ namespace Hookwright.Dispatch;
 /// nothing fits nothing is claimed, so a slow pipeline shows up as fewer leases held rather than
 /// as memory. The buffer holds two batches, one being handed out and one waiting, so that a claim
 /// round trip never leaves workers idle, and no more, so that a lease is never held long before
-/// anyone works on it.
+/// anyone works on it. A claim leaves out the endpoints whose circuits would refuse a delivery
+/// right now, so that a saturated endpoint's backlog is passed over in the store instead of being
+/// claimed and handed straight back.
 /// </remarks>
 public sealed class DeliveryClaimer
 {
     private readonly IDeliveryLeaseStore _store;
     private readonly DeliveryOptions _options;
+    private readonly EndpointCircuits _circuits;
     private readonly TimeProvider _time;
     private readonly ILogger<DeliveryClaimer> _logger;
     private readonly Channel<ClaimedDelivery> _deliveries;
@@ -34,24 +37,28 @@ public sealed class DeliveryClaimer
     /// </summary>
     /// <param name="store">Where deliveries are claimed from, and handed back to.</param>
     /// <param name="options">Batch size, lease duration, and the poll interval.</param>
+    /// <param name="circuits">Which endpoints this instance cannot send to right now.</param>
     /// <param name="workerId">This worker's name, from <see cref="Core.Deliveries.WorkerIdentity"/>.</param>
     /// <param name="timeProvider">The clock.</param>
     /// <param name="logger">Logger.</param>
     public DeliveryClaimer(
         IDeliveryLeaseStore store,
         DeliveryOptions options,
+        EndpointCircuits circuits,
         string workerId,
         TimeProvider timeProvider,
         ILogger<DeliveryClaimer> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(circuits);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
         _options = options;
+        _circuits = circuits;
         WorkerId = workerId;
         _time = timeProvider;
         _logger = logger;
@@ -147,8 +154,9 @@ public sealed class DeliveryClaimer
 
     private async Task<int> ClaimAsync(int requested, CancellationToken cancellationToken)
     {
+        DateTimeOffset now = _time.GetUtcNow();
         IReadOnlyList<ClaimedDelivery> claimed = await _store
-            .ClaimAsync(WorkerId, requested, _options.LeaseDuration, _time.GetUtcNow(), cancellationToken)
+            .ClaimAsync(WorkerId, requested, _options.LeaseDuration, now, _circuits.Refusing(now), cancellationToken)
             .ConfigureAwait(false);
 
         foreach (ClaimedDelivery delivery in claimed)

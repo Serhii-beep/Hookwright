@@ -10,6 +10,16 @@ internal static class TestDeliveries
 {
     public static ClaimedDelivery Claimed(DateTimeOffset leaseExpiresAt)
     {
+        return Claimed(leaseExpiresAt, WebhookEndpointId.New());
+    }
+
+    public static ClaimedDelivery Claimed(
+        DateTimeOffset leaseExpiresAt,
+        WebhookEndpointId endpointId,
+        EndpointHealth health = EndpointHealth.Healthy,
+        int consecutiveFailures = 0,
+        DateTimeOffset? failingSince = null)
+    {
         return new ClaimedDelivery
         {
             DeliveryId = DeliveryId.New(),
@@ -19,13 +29,13 @@ internal static class TestDeliveries
             EventType = "order.created",
             Payload = "{}",
             Headers = new Dictionary<string, string>(),
-            EndpointId = WebhookEndpointId.New(),
+            EndpointId = endpointId,
             Url = new Uri("https://example.test/hooks"),
             Secrets = [],
             SubscriberId = SubscriberId.New(),
-            EndpointHealth = EndpointHealth.Healthy,
-            ConsecutiveFailures = 0,
-            FailingSince = null
+            EndpointHealth = health,
+            ConsecutiveFailures = consecutiveFailures,
+            FailingSince = failingSince
         };
     }
 

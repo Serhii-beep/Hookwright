@@ -1,4 +1,6 @@
 ﻿using Hookwright.Core.Configuration;
+using Hookwright.Core.Endpoints;
+using Hookwright.Core.Storage;
 using Hookwright.Dispatch;
 using Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
 
@@ -33,7 +35,7 @@ public sealed class DeliveryClaimerTests
         SignallingTimeProvider time = new();
         FakeLogger<DeliveryClaimer> logger = new();
         store.MakeDue(3, time.GetUtcNow() + Lease);
-        DeliveryClaimer claimer = new(store, Options(batchSize: 10), Worker, time, logger);
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 10), time, logger);
         using MetricProbe claimed = new("hookwright.deliveries.claimed");
         using CancellationTokenSource stopping = new();
 
@@ -50,9 +52,38 @@ public sealed class DeliveryClaimerTests
         await run;
 
         claimed.Total.ShouldBe(3);
+        store.Excluded.ShouldAllBe(excluded => excluded.Count == 0);
         FakeLogRecord record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
         record.Level.ShouldBe(LogLevel.Debug);
         record.Message.ShouldBe("web-01:4242:a1b2c3 claimed 3 deliveries");
+    }
+
+    [Fact]
+    public async Task RunAsync_Always_TellsTheStoreWhichEndpointsItCannotSendTo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        RecordingLeaseStore store = new();
+        SignallingTimeProvider time = new();
+        DeliveryOptions options = Options(batchSize: 10);
+        options.MaxConnectionsPerEndpoint = 1;
+        EndpointCircuits circuits = new(options, new CircuitOptions());
+        ClaimedDelivery held = TestDeliveries.Claimed(time.GetUtcNow() + Lease);
+        circuits.For(held).TryAdmit(time.GetUtcNow()).ShouldBeOfType<Admission.Granted>();
+        store.MakeDue(TestDeliveries.Claimed(time.GetUtcNow() + Lease, held.EndpointId));
+        store.MakeDue(1, time.GetUtcNow() + Lease);
+        DeliveryClaimer claimer = new(store, options, circuits, Worker, time, new FakeLogger<DeliveryClaimer>());
+        using CancellationTokenSource stopping = new();
+
+        Task run = claimer.RunAsync(stopping.Token);
+
+        await store.NextClaimAsync(token);
+        (await claimer.Deliveries.ReadAsync(token)).EndpointId.ShouldNotBe(held.EndpointId);
+
+        await stopping.CancelAsync();
+        await run;
+
+        store.Excluded[0].ShouldBe([held.EndpointId]);
+        store.Due.ShouldBe(1);
     }
 
     [Fact]
@@ -63,7 +94,7 @@ public sealed class DeliveryClaimerTests
         SignallingTimeProvider time = new();
         DateTimeOffset start = time.GetUtcNow();
         store.MakeDue(4, start + Lease);
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -83,7 +114,7 @@ public sealed class DeliveryClaimerTests
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
         DateTimeOffset start = time.GetUtcNow();
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -110,7 +141,7 @@ public sealed class DeliveryClaimerTests
         SignallingTimeProvider time = new();
         DateTimeOffset start = time.GetUtcNow();
         store.MakeDue(1, start + Lease);
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -136,7 +167,7 @@ public sealed class DeliveryClaimerTests
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
         store.MakeDue(10, time.GetUtcNow() + Lease);
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -161,7 +192,7 @@ public sealed class DeliveryClaimerTests
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
         DateTimeOffset start = time.GetUtcNow();
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -193,7 +224,7 @@ public sealed class DeliveryClaimerTests
         SignallingTimeProvider time = new();
         DateTimeOffset start = time.GetUtcNow();
         FakeLogger<DeliveryClaimer> logger = new();
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, logger);
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time, logger);
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -217,7 +248,7 @@ public sealed class DeliveryClaimerTests
     public async Task RunAsync_WhenStopped_CompletesDeliveries()
     {
         RecordingLeaseStore store = new();
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, new SignallingTimeProvider(), new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), new SignallingTimeProvider());
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
@@ -235,7 +266,7 @@ public sealed class DeliveryClaimerTests
         RecordingLeaseStore store = new() { ReleaseAnswer = 3 };
         SignallingTimeProvider time = new();
         FakeLogger<DeliveryClaimer> logger = new();
-        DeliveryClaimer claimer = new(store, Options(batchSize: 2), Worker, time, logger);
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time, logger);
         using MetricProbe released = new("hookwright.leases.released");
 
         (await claimer.ReleaseAsync(TestContext.Current.CancellationToken)).ShouldBe(3);
@@ -251,7 +282,7 @@ public sealed class DeliveryClaimerTests
     public async Task ReleaseAsync_GivenNothingHeld_SaysNothing()
     {
         FakeLogger<DeliveryClaimer> logger = new();
-        DeliveryClaimer claimer = new(new RecordingLeaseStore(), Options(batchSize: 2), Worker, new SignallingTimeProvider(), logger);
+        DeliveryClaimer claimer = CreateClaimer(new RecordingLeaseStore(), Options(batchSize: 2), new SignallingTimeProvider(), logger);
 
         (await claimer.ReleaseAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
 
@@ -261,7 +292,19 @@ public sealed class DeliveryClaimerTests
     [Fact]
     public void Constructor_GivenNoWorkerId_Throws()
     {
+        DeliveryOptions options = Options(batchSize: 2);
+
         Should.Throw<ArgumentException>(() => new DeliveryClaimer(
-            new RecordingLeaseStore(), Options(batchSize: 2), " ", new SignallingTimeProvider(), new FakeLogger<DeliveryClaimer>()));
+            new RecordingLeaseStore(), options, new EndpointCircuits(options, new CircuitOptions()), " ", new SignallingTimeProvider(), new FakeLogger<DeliveryClaimer>()));
+    }
+
+    private static DeliveryClaimer CreateClaimer(
+          RecordingLeaseStore store,
+          DeliveryOptions options,
+          SignallingTimeProvider time,
+          FakeLogger<DeliveryClaimer>? logger = null)
+    {
+        return new DeliveryClaimer(
+            store, options, new EndpointCircuits(options, new CircuitOptions()), Worker, time, logger ?? new FakeLogger<DeliveryClaimer>());
     }
 }

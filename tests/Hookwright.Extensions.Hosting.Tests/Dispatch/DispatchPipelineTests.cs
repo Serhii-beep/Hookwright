@@ -2,6 +2,7 @@
 
 using Hookwright.Core.Configuration;
 using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 using Hookwright.Dispatch;
 using Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
 
@@ -138,16 +139,18 @@ public sealed class DispatchPipelineTests
 
     private static DispatchPipeline CreatePipeline(RecordingLeaseStore store, ScriptedTransport transport, DeliveryOptions options)
     {
-        DeliveryClaimer claimer = new(store, options, Worker, TimeProvider.System, new FakeLogger<DeliveryClaimer>());
+        EndpointCircuits circuits = new(options, new CircuitOptions());
+        DeliveryClaimer claimer = new(store, options, circuits, Worker, TimeProvider.System, new FakeLogger<DeliveryClaimer>());
         DeliveryWorker worker = new(
             transport,
             new DefaultRetryPolicy(RetrySchedule.Default, Random.Shared),
+            circuits,
             options,
             new RetentionOptions(),
             Worker,
             TimeProvider.System,
             new FakeLogger<DeliveryWorker>());
-        CompletionWriter writer = new(store, options, Worker, TimeProvider.System, new FakeLogger<CompletionWriter>());
+        CompletionWriter writer = new(store, NullEndpointNotifier.Instance, options, Worker, TimeProvider.System, new FakeLogger<CompletionWriter>());
 
         return new DispatchPipeline(claimer, worker, writer, options);
     }

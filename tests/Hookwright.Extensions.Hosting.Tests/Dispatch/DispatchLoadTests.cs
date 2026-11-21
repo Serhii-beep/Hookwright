@@ -160,17 +160,19 @@ public sealed class DispatchLoadTests : IAsyncLifetime
 
     private DispatchPipeline CreatePipeline(IDeliveryTransport transport)
     {
+        EndpointCircuits circuits = new(Options, new CircuitOptions());
         SessionPerCallLeaseStore store = new(_contextOptions);
-        DeliveryClaimer claimer = new(store, Options, Worker, TimeProvider.System, NullLogger<DeliveryClaimer>.Instance);
+        DeliveryClaimer claimer = new(store, Options, circuits, Worker, TimeProvider.System, NullLogger<DeliveryClaimer>.Instance);
         DeliveryWorker worker = new(
             transport,
             new DefaultRetryPolicy(RetrySchedule.Default, Random.Shared),
+            circuits,
             Options,
             new RetentionOptions(),
             Worker,
             TimeProvider.System,
             NullLogger<DeliveryWorker>.Instance);
-        CompletionWriter writer = new(store, Options, Worker, TimeProvider.System, NullLogger<CompletionWriter>.Instance);
+        CompletionWriter writer = new(store, NullEndpointNotifier.Instance, Options, Worker, TimeProvider.System, NullLogger<CompletionWriter>.Instance);
 
         return new DispatchPipeline(claimer, worker, writer, Options);
     }

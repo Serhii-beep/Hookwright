@@ -36,7 +36,12 @@ internal sealed class DispatchInstance
         int hangAfter = int.MaxValue)
     {
         DeliveryClaimer claimer = new(
-            store, options, WorkerIdentity.Create(machine, Environment.ProcessId), TimeProvider.System, new FakeLogger<DeliveryClaimer>(log));
+            store,
+            options,
+            new EndpointCircuits(options, new CircuitOptions()),
+            WorkerIdentity.Create(machine, Environment.ProcessId),
+            TimeProvider.System,
+            new FakeLogger<DeliveryClaimer>(log));
         LeaseReaper reaper = new(store, options, TimeProvider.System, new FakeLogger<LeaseReaper>(log));
         DispatchInstance instance = new(claimer, store, hangAfter);
 

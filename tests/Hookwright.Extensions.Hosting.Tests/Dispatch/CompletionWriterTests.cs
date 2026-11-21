@@ -1,5 +1,7 @@
 ﻿using Hookwright.Core.Configuration;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
+using Hookwright.Core.Subscribers;
 using Hookwright.Dispatch;
 using Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
 
@@ -20,7 +22,7 @@ public sealed class CompletionWriterTests
         CancellationToken token = TestContext.Current.CancellationToken;
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 3), Worker, time, new FakeLogger<CompletionWriter>());
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 3), time);
 
         Task run = writer.RunAsync();
 
@@ -43,7 +45,7 @@ public sealed class CompletionWriterTests
         CancellationToken token = TestContext.Current.CancellationToken;
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 10), Worker, time, new FakeLogger<CompletionWriter>());
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 10), time);
 
         Task run = writer.RunAsync();
         await writer.Completions.WriteAsync(Completion(time), token);
@@ -64,7 +66,7 @@ public sealed class CompletionWriterTests
         CancellationToken token = TestContext.Current.CancellationToken;
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 10), Worker, time, new FakeLogger<CompletionWriter>());
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 10), time);
 
         Task run = writer.RunAsync();
         await writer.Completions.WriteAsync(Completion(time), token);
@@ -87,7 +89,7 @@ public sealed class CompletionWriterTests
         RecordingLeaseStore store = new() { CompleteShortfall = 1 };
         FakeLogger<CompletionWriter> logger = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 3), Worker, time, logger);
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 3), time, logger: logger);
         using MetricProbe late = new("hookwright.completions.late");
 
         Task run = writer.RunAsync();
@@ -115,7 +117,7 @@ public sealed class CompletionWriterTests
         RecordingLeaseStore store = new() { NextCompleteFailure = failure };
         FakeLogger<CompletionWriter> logger = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 2), Worker, time, logger);
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 2), time, logger: logger);
         using MetricProbe lost = new("hookwright.completions.lost");
 
         Task run = writer.RunAsync();
@@ -140,12 +142,68 @@ public sealed class CompletionWriterTests
     }
 
     [Fact]
+    public async Task RunAsync_GivenAnEndpointTheStoreDisabled_TellsTheNotifierOnce()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        RecordingLeaseStore store = new();
+        RecordingNotifier notifier = new();
+        FakeLogger<CompletionWriter> logger = new();
+        SignallingTimeProvider time = new();
+        using MetricProbe disabled = new("hookwright.endpoints.disabled");
+        WebhookEndpoint endpoint = Disabled(time);
+        store.RetiredAnswers.Enqueue([endpoint]);
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 1), time, notifier, logger);
+
+        Task run = writer.RunAsync();
+        await writer.Completions.WriteAsync(Completion(time), token);
+        await store.NextCompleteAsync(token);
+        await writer.Completions.WriteAsync(Completion(time), token);
+        await store.NextCompleteAsync(token);
+        writer.Complete();
+        await run;
+
+        notifier.Disabled.ShouldHaveSingleItem().ShouldBeSameAs(endpoint);
+        disabled.Total.ShouldBe(1);
+        FakeLogRecord record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Warning);
+        record.Message.ShouldBe($"Endpoint {endpoint.Id} of {endpoint.SubscriberId} is disabled. {DeliveryCompletion.GoneReason}");
+    }
+
+    [Fact]
+    public async Task RunAsync_GivenANotifierThatThrows_LogsItAndWritesTheNextBatchAllTheSame()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        InvalidOperationException failure = new("the mail server went away");
+        RecordingLeaseStore store = new();
+        RecordingNotifier notifier = new() { Failure = failure };
+        FakeLogger<CompletionWriter> logger = new();
+        SignallingTimeProvider time = new();
+        WebhookEndpoint endpoint = Disabled(time);
+        store.RetiredAnswers.Enqueue([endpoint]);
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 1), time, notifier, logger);
+
+        Task run = writer.RunAsync();
+        await writer.Completions.WriteAsync(Completion(time), token);
+        await store.NextCompleteAsync(token);
+        await writer.Completions.WriteAsync(Completion(time), token);
+        await store.NextCompleteAsync(token);
+        writer.Complete();
+        await run;
+
+        store.Completions.Count.ShouldBe(2);
+        notifier.Disabled.Count.ShouldBe(1);
+        FakeLogRecord error = logger.Collector.GetSnapshot().Single(record => record.Level == LogLevel.Error);
+        error.Exception.ShouldBeSameAs(failure);
+        error.Message.ShouldBe($"The endpoint notifier failed for {endpoint.Id}. The endpoint is disabled all the same");
+    }
+
+    [Fact]
     public async Task Complete_Always_LetsRunAsyncFinishOnceEverythingIsWritten()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         RecordingLeaseStore store = new();
         SignallingTimeProvider time = new();
-        CompletionWriter writer = new(store, Options(batchSize: 10), Worker, time, new FakeLogger<CompletionWriter>());
+        CompletionWriter writer = CreateWriter(store, Options(batchSize: 10), time);
 
         Task run = writer.RunAsync();
         await writer.Completions.WriteAsync(Completion(time), token);
@@ -171,5 +229,24 @@ public sealed class CompletionWriterTests
     private static DeliveryCompletion Completion(FakeTimeProvider time)
     {
         return TestDeliveries.Completed(TestDeliveries.Claimed(time.GetUtcNow() + TimeSpan.FromSeconds(60)), time.GetUtcNow());
+    }
+
+    private static CompletionWriter CreateWriter(
+        RecordingLeaseStore store,
+        DeliveryOptions options,
+        SignallingTimeProvider time,
+        IEndpointNotifier? notifier = null,
+        FakeLogger<CompletionWriter>? logger = null)
+    {
+        return new CompletionWriter(
+            store, notifier ?? NullEndpointNotifier.Instance, options, Worker, time, logger ?? new FakeLogger<CompletionWriter>());
+    }
+
+    private static WebhookEndpoint Disabled(FakeTimeProvider time)
+    {
+        WebhookEndpoint endpoint = WebhookEndpoint.Create(SubscriberId.New(), new Uri("https://example.test/hooks"), null, time.GetUtcNow());
+        endpoint.Disable(DeliveryCompletion.GoneReason, time.GetUtcNow());
+
+        return endpoint;
     }
 }

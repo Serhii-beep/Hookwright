@@ -1,7 +1,9 @@
-﻿using System.Threading.Channels;
+﻿using System.Globalization;
+using System.Threading.Channels;
 
 using Hookwright.Core.Configuration;
 using Hookwright.Core.Deliveries;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.Dispatch;
 using Hookwright.Extensions.Hosting.Tests.Dispatch.Helpers;
@@ -24,7 +26,14 @@ public sealed class DeliveryWorkerTests
         BatchSize = 10,
         PollInterval = TimeSpan.FromSeconds(1),
         LeaseDuration = Lease,
-        RequestTimeout = TimeSpan.FromSeconds(1)
+        RequestTimeout = TimeSpan.FromSeconds(1),
+        MaxConnectionsPerEndpoint = 8
+    };
+
+    private static readonly CircuitOptions Circuit = new()
+    {
+        Cooldown = TimeSpan.FromMinutes(1),
+        DisableAfter = TimeSpan.FromDays(5)
     };
 
     private static readonly DefaultRetryPolicy Policy = new(
@@ -100,7 +109,7 @@ public sealed class DeliveryWorkerTests
         completion.State.ShouldBe(DeliveryState.Failed);
         completion.RetirementReason.ShouldBe(DeliveryCompletion.GoneReason);
         logger.Collector.GetSnapshot().ShouldContain(record => record.Level == LogLevel.Information
-            && record.Message == $"{Worker} retired endpoint {claimed.EndpointId}. It answered 410 Gone");
+            && record.Message == $"{Worker} retired endpoint {claimed.EndpointId}. {DeliveryCompletion.GoneReason}");
     }
 
     [Fact]
@@ -175,6 +184,216 @@ public sealed class DeliveryWorkerTests
 
         completion.ShouldNotBeNull();
         transport.SentCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenADisabledEndpoint_CancelsTheDeliveryWithoutSending()
+    {
+        FakeTimeProvider time = new();
+        ScriptedTransport transport = new();
+        FakeLogger<DeliveryWorker> logger = new();
+        using MetricProbe cancelled = new("hookwright.deliveries.cancelled");
+        ClaimedDelivery claimed = TestDeliveries.Claimed(time.GetUtcNow() + Lease, WebhookEndpointId.New(), EndpointHealth.Disabled);
+
+        DeliveryCompletion? completion = await CreateWorker(transport, time, logger).AttemptAsync(claimed);
+
+        completion.ShouldNotBeNull();
+        completion.State.ShouldBe(DeliveryState.Cancelled);
+        completion.CompletedAt.ShouldBe(time.GetUtcNow());
+        completion.Attempt.ShouldBeNull();
+        transport.SentCount.ShouldBe(0);
+        cancelled.Total.ShouldBe(1);
+        FakeLogRecord record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Information);
+        record.Message.ShouldBe($"{Worker} cancelled {claimed.DeliveryId}. Endpoint {claimed.EndpointId} is disabled");
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenACircuitWithEverySlotTaken_DefersTheDeliveryForAPollIntervalOrSo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeTimeProvider time = new();
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ScriptedTransport transport = new() { Gate = gate.Task };
+        FakeLogger<DeliveryWorker> logger = new();
+        using MetricProbe deferred = new("hookwright.deliveries.deferred");
+        WebhookEndpointId endpoint = WebhookEndpointId.New();
+        DeliveryWorker worker = CreateWorker(transport, time, logger, options: new DeliveryOptions
+        {
+            MaxConnectionsPerEndpoint = 1,
+            PollInterval = TimeSpan.FromSeconds(1),
+            LeaseDuration = Lease,
+            RequestTimeout = TimeSpan.FromSeconds(1)
+        });
+
+        Task<DeliveryCompletion?> first = worker.AttemptAsync(TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint));
+        await transport.NextSendAsync(token);
+        ClaimedDelivery turnedAway = TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint);
+
+        DeliveryCompletion? completion = await worker.AttemptAsync(turnedAway);
+
+        completion.ShouldNotBeNull();
+        completion.State.ShouldBe(DeliveryState.Pending);
+        completion.Attempt.ShouldBeNull();
+        completion.GivesBackAttempt.ShouldBeTrue();
+        completion.NextAttemptAt.ShouldNotBeNull();
+        completion.NextAttemptAt.Value.ShouldBeInRange(time.GetUtcNow().AddSeconds(0.5), time.GetUtcNow().AddSeconds(1.5));
+        deferred.Total.ShouldBe(1);
+        logger.Collector.GetSnapshot().ShouldContain(record => record.Level == LogLevel.Debug
+            && record.Message.StartsWith($"{Worker} deferred {turnedAway.DeliveryId} until ", StringComparison.Ordinal)
+            && record.Message.EndsWith($". Endpoint {endpoint} is Healthy", StringComparison.Ordinal));
+
+        gate.SetResult();
+        (await first).ShouldNotBeNull().State.ShouldBe(DeliveryState.Succeeded);
+        transport.SentCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenAnOpenCircuit_DefersTheDeliveryUntilItReopens()
+    {
+        FakeTimeProvider time = new();
+        ScriptedTransport transport = new(_ => 500);
+        WebhookEndpointId endpoint = WebhookEndpointId.New();
+        EndpointCircuits circuits = new(Options, Circuit);
+        DeliveryWorker worker = CreateWorker(transport, time, circuits: circuits);
+
+        (await worker.AttemptAsync(TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint, consecutiveFailures: 10, failingSince: time.GetUtcNow().AddMinutes(-5))))
+            .ShouldNotBeNull().Attempt.ShouldNotBeNull();
+        DateTimeOffset reopensAt = circuits.Find(endpoint).ShouldNotBeNull().ReopensAt.ShouldNotBeNull();
+        reopensAt.ShouldBe(time.GetUtcNow() + Circuit.Cooldown);
+
+        DeliveryCompletion? completion = await worker.AttemptAsync(TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint));
+
+        completion.ShouldNotBeNull();
+        completion.State.ShouldBe(DeliveryState.Pending);
+        completion.Attempt.ShouldBeNull();
+        completion.NextAttemptAt.ShouldNotBeNull();
+        completion.NextAttemptAt.Value.ShouldBeInRange(reopensAt.AddSeconds(0.5), reopensAt.AddSeconds(1.5));
+        transport.SentCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenFailuresInARow_CutsTheConcurrencyOpensTheCircuitProbesAndClosesIt()
+    {
+        FakeTimeProvider time = new();
+        int sent = 0;
+        ScriptedTransport transport = new(_ => Interlocked.Increment(ref sent) <= 10 ? 500 : 200);
+        FakeLogger<DeliveryWorker> logger = new();
+        using MetricProbe opened = new("hookwright.circuits.opened");
+        using MetricProbe closed = new("hookwright.circuits.closed");
+        using MetricProbe deferred = new("hookwright.deliveries.deferred");
+        WebhookEndpointId endpoint = WebhookEndpointId.New();
+        EndpointCircuits circuits = new(Options, Circuit);
+        DeliveryWorker worker = CreateWorker(transport, time, logger, circuits: circuits);
+        List<int> limits = [];
+
+        for (int i = 0; i < 10; i++)
+        {
+            (await worker.AttemptAsync(Claimed(time, endpoint))).ShouldNotBeNull().State.ShouldBe(DeliveryState.Pending);
+            limits.Add(circuits.Find(endpoint).ShouldNotBeNull().Limit);
+        }
+
+        EndpointCircuit circuit = circuits.Find(endpoint).ShouldNotBeNull();
+        limits.ShouldBe([8, 8, 4, 2, 1, 1, 1, 1, 1, 1]);
+        circuit.Health.ShouldBe(EndpointHealth.Failing);
+        DateTimeOffset reopensAt = circuit.ReopensAt.ShouldNotBeNull();
+        reopensAt.ShouldBe(time.GetUtcNow() + Circuit.Cooldown);
+
+        DeliveryCompletion turnedAway = (await worker.AttemptAsync(Claimed(time, endpoint))).ShouldNotBeNull();
+        turnedAway.Attempt.ShouldBeNull();
+        turnedAway.NextAttemptAt.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(reopensAt);
+        transport.SentCount.ShouldBe(10);
+
+        time.Advance(Circuit.Cooldown);
+
+        (await worker.AttemptAsync(Claimed(time, endpoint))).ShouldNotBeNull().State.ShouldBe(DeliveryState.Succeeded);
+        circuit.Health.ShouldBe(EndpointHealth.Degraded);
+        circuit.Limit.ShouldBe(1);
+        circuit.ReopensAt.ShouldBeNull();
+
+        limits.Clear();
+
+        for (int i = 0; i < 3; i++)
+        {
+            (await worker.AttemptAsync(Claimed(time, endpoint))).ShouldNotBeNull().State.ShouldBe(DeliveryState.Succeeded);
+            limits.Add(circuit.Limit);
+        }
+
+        limits.ShouldBe([2, 4, 8]);
+        circuit.Health.ShouldBe(EndpointHealth.Healthy);
+        opened.Total.ShouldBe(1);
+        closed.Total.ShouldBe(1);
+        deferred.Total.ShouldBe(1);
+        IReadOnlyList<FakeLogRecord> records = logger.Collector.GetSnapshot();
+        records.ShouldContain(record => record.Level == LogLevel.Warning
+            && record.Message == $"Endpoint {endpoint} has failed 3 times in a row. It takes 4 deliveries at once from now on");
+
+        records.ShouldContain(record => record.Level == LogLevel.Warning
+            && record.Message.StartsWith($"Endpoint {endpoint} has failed 10 times in a row. Nothing more goes to it before ", StringComparison.Ordinal));
+
+        records.ShouldContain(record => record.Level == LogLevel.Information
+            && record.Message == $"Endpoint {endpoint} answered its probe. Deliveries resume one at a time");
+        records.ShouldContain(record => record.Level == LogLevel.Information
+            && record.Message == $"Endpoint {endpoint} is back at full concurrency");
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenAnEndpointThatHasFailedForAsLongAsAllowed_RetiresIt()
+    {
+        FakeTimeProvider time = new();
+        ScriptedTransport transport = new(_ => 503);
+        FakeLogger<DeliveryWorker> logger = new();
+        DateTimeOffset since = time.GetUtcNow() - Circuit.DisableAfter - TimeSpan.FromMinutes(1);
+        ClaimedDelivery claimed = TestDeliveries.Claimed(
+            time.GetUtcNow() + Lease, WebhookEndpointId.New(), consecutiveFailures: 4, failingSince: since);
+        string reason = $"The endpoint has failed continuously since {since.ToString("u", CultureInfo.InvariantCulture)}.";
+
+        DeliveryCompletion? completion = await CreateWorker(transport, time, logger).AttemptAsync(claimed);
+
+        completion.ShouldNotBeNull();
+        completion.State.ShouldBe(DeliveryState.Cancelled);
+        completion.CompletedAt.ShouldBe(time.GetUtcNow());
+        completion.Attempt.ShouldNotBeNull();
+        completion.Attempt.Outcome.ShouldBe(AttemptOutcome.ServerError);
+        completion.RetirementReason.ShouldBe(reason);
+        logger.Collector.GetSnapshot().ShouldContain(record => record.Level == LogLevel.Information
+            && record.Message == $"{Worker} retired endpoint {claimed.EndpointId}. {reason}");
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenACircuitTimingARunTheStoreSaysHasEnded_DoesNotRetireTheEndpoint()
+    {
+        FakeTimeProvider time = new();
+        ScriptedTransport transport = new(_ => 503);
+        WebhookEndpointId endpoint = WebhookEndpointId.New();
+        EndpointCircuits circuits = new(Options, Circuit);
+        DeliveryWorker worker = CreateWorker(transport, time, circuits: circuits);
+        DateTimeOffset since = time.GetUtcNow() - Circuit.DisableAfter - TimeSpan.FromMinutes(1);
+
+        circuits.For(TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint, consecutiveFailures: 4, failingSince: since));
+
+        DeliveryCompletion? completion = await worker.AttemptAsync(Claimed(time, endpoint));
+
+        completion.ShouldNotBeNull();
+        completion.State.ShouldBe(DeliveryState.Pending);
+        completion.RetirementReason.ShouldBeNull();
+        circuits.Find(endpoint).ShouldNotBeNull().FailingSince.ShouldBe(time.GetUtcNow());
+    }
+
+    [Fact]
+    public async Task AttemptAsync_GivenASendThatIsCancelled_GivesTheSlotBackAndLearnsNothing()
+    {
+        FakeTimeProvider time = new();
+        ScriptedTransport transport = new(_ => throw new OperationCanceledException());
+        WebhookEndpointId endpoint = WebhookEndpointId.New();
+        EndpointCircuits circuits = new(Options, Circuit);
+        DeliveryWorker worker = CreateWorker(transport, time, circuits: circuits);
+
+        await Should.ThrowAsync<OperationCanceledException>(() => worker.AttemptAsync(Claimed(time, endpoint)));
+
+        EndpointCircuit circuit = circuits.Find(endpoint).ShouldNotBeNull();
+        circuit.InFlight.ShouldBe(0);
+        circuit.ConsecutiveFailures.ShouldBe(0);
     }
 
     [Fact]
@@ -257,13 +476,29 @@ public sealed class DeliveryWorkerTests
             && record.Message == $"{Worker} stopped before the result of {claimed.DeliveryId} could be queued. Its lease will lapse");
     }
 
+    private static ClaimedDelivery Claimed(FakeTimeProvider time, WebhookEndpointId endpoint)
+    {
+        return TestDeliveries.Claimed(time.GetUtcNow() + Lease, endpoint);
+    }
+
     private static DeliveryWorker CreateWorker(
         ScriptedTransport transport,
         FakeTimeProvider time,
         FakeLogger<DeliveryWorker>? logger = null,
-        RetentionOptions? retention = null)
+        RetentionOptions? retention = null,
+        DeliveryOptions? options = null,
+        EndpointCircuits? circuits = null)
     {
+        options ??= Options;
+
         return new DeliveryWorker(
-            transport, Policy, Options, retention ?? new RetentionOptions(), Worker, time, logger ?? new FakeLogger<DeliveryWorker>());
+            transport,
+            Policy,
+            circuits ?? new EndpointCircuits(options, Circuit),
+            options,
+            retention ?? new RetentionOptions(),
+            Worker,
+            time,
+            logger ?? new FakeLogger<DeliveryWorker>());
     }
 }

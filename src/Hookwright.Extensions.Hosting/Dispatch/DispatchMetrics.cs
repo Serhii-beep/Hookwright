@@ -37,11 +37,26 @@ public static class DispatchMetrics
     internal static readonly Counter<long> Stale = Meter.CreateCounter<long>(
         "hookwright.deliveries.stale", "{delivery}", "Deliveries left to the reaper because too little of their lease remained to attempt them.");
 
+    internal static readonly Counter<long> Deferred = Meter.CreateCounter<long>(
+        "hookwright.deliveries.deferred", "{delivery}", "Deliveries returned to the queue unattempted because their endpoint's circuit would not admit them.");
+
+    internal static readonly Counter<long> Cancelled = Meter.CreateCounter<long>(
+        "hookwright.deliveries.cancelled", "{delivery}", "Deliveries abandoned unattempted because their endpoint had been disabled.");
+
     internal static readonly Counter<long> Late = Meter.CreateCounter<long>(
         "hookwright.completions.late", "{delivery}", "Results the store dropped because the lease had lapsed and the delivery been reclaimed.");
 
     internal static readonly Counter<long> Lost = Meter.CreateCounter<long>(
         "hookwright.completions.lost", "{delivery}", "Results the store could not record. Their leases lapse and the deliveries are attempted again.");
+
+    internal static readonly Counter<long> CircuitsOpened = Meter.CreateCounter<long>(
+        "hookwright.circuits.opened", "{circuit}", "Endpoint circuits opened by a run of failures, failed probes included.");
+
+    internal static readonly Counter<long> CircuitsClosed = Meter.CreateCounter<long>(
+        "hookwright.circuits.closed", "{circuit}", "Endpoint circuits closed by a probe that was answered.");
+
+    internal static readonly Counter<long> EndpointsDisabled = Meter.CreateCounter<long>(
+        "hookwright.endpoints.disabled", "{endpoint}", "Endpoints the engine disabled, for a 410 or for failing longer than allowed.");
 
     internal static void CountAttempt(AttemptOutcome outcome)
     {

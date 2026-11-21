@@ -1,6 +1,7 @@
 ﻿using System.Threading.Channels;
 
 using Hookwright.Core.Configuration;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 
 using Microsoft.Extensions.Logging;
@@ -8,13 +9,16 @@ using Microsoft.Extensions.Logging;
 namespace Hookwright.Dispatch;
 
 /// <summary>
-/// Writes the workers' results to the store in batches.
+/// Writes the workers' results to the store in batches, and tells the host about the
+/// endpoints a batch disabled.
 /// </summary>
 /// <remarks>
 /// The channel the workers write to is bounded, two batches deep. A store that cannot
 /// keep up fills it, the workers stall on it, the claimer's buffer fills behind them,
 /// and the claimer stops claiming: backpressure reaches the database from the database,
-/// and nothing in between grows.
+/// and nothing in between grows. The notifier is called here, after the write, once per
+/// endpoint the store says it disabled, so that an owner is told exactly once and only
+/// about a disabling that has landed.
 /// </remarks>
 public sealed class CompletionWriter
 {
@@ -24,6 +28,7 @@ public sealed class CompletionWriter
     public static readonly TimeSpan Linger = TimeSpan.FromMilliseconds(100);
 
     private readonly IDeliveryLeaseStore _store;
+    private readonly IEndpointNotifier _notifier;
     private readonly int _batchSize;
     private readonly TimeProvider _time;
     private readonly ILogger<CompletionWriter> _logger;
@@ -33,24 +38,28 @@ public sealed class CompletionWriter
     /// Creates the writer.
     /// </summary>
     /// <param name="store">Where results are written.</param>
+    /// <param name="notifier">Who is told when an endpoint is disabled.</param>
     /// <param name="options">The batch size, which is also the claim batch size.</param>
     /// <param name="workerId">The worker whose leases the results are written under.</param>
     /// <param name="timeProvider">The clock.</param>
     /// <param name="logger">Used for logging.</param>
     public CompletionWriter(
         IDeliveryLeaseStore store,
+        IEndpointNotifier notifier,
         DeliveryOptions options,
         string workerId,
         TimeProvider timeProvider,
         ILogger<CompletionWriter> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(notifier);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
+        _notifier = notifier;
         _batchSize = options.BatchSize;
         WorkerId = workerId;
         _time = timeProvider;
@@ -155,6 +164,26 @@ public sealed class CompletionWriter
             // those deliveries now, and the attempt record says so.
             DispatchMetrics.Late.Add(batch.Count - report.Applied);
             DispatchLog.LateResults(_logger, WorkerId, report.Applied, batch.Count);
+        }
+
+        foreach (WebhookEndpoint endpoint in report.Retired)
+        {
+            await NotifyAsync(endpoint).ConfigureAwait(false);
+        }
+    }
+
+    private async Task NotifyAsync(WebhookEndpoint endpoint)
+    {
+        DispatchMetrics.EndpointsDisabled.Add(1);
+        DispatchLog.EndpointDisabled(_logger, endpoint.Id, endpoint.SubscriberId, endpoint.DisabledReason);
+
+        try
+        {
+            await _notifier.EndpointDisabledAsync(endpoint, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            DispatchLog.NotifierFailed(_logger, ex, endpoint.Id);
         }
     }
 }

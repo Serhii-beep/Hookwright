@@ -96,7 +96,7 @@ public sealed class MultiInstanceTests : IAsyncLifetime
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await SeedAsync(25, token);
-        DeliveryClaimer claimer = new(Store(), Options, "web-01:4242:a1b2c3", TimeProvider.System, new FakeLogger<DeliveryClaimer>());
+        DeliveryClaimer claimer = new(Store(), Options, new EndpointCircuits(Options, new CircuitOptions()), "web-01:4242:a1b2c3", TimeProvider.System, new FakeLogger<DeliveryClaimer>());
         using CancellationTokenSource stopping = new();
 
         Task run = claimer.RunAsync(stopping.Token);
