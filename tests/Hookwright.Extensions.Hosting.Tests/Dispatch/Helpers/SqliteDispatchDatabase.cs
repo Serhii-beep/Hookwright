@@ -81,6 +81,17 @@ internal sealed class SqliteDispatchDatabase : IAsyncDisposable
         return endpoint;
     }
 
+    public async Task PublishAsync(WebhookEndpoint endpoint, DateTimeOffset at, CancellationToken token)
+    {
+        await using HookwrightDbContext context = CreateContext();
+        EfEventStore events = new(context);
+        WebhookEvent published = WebhookEvent.Create(endpoint.SubscriberId, "order.created", "{}", at);
+        events.Append(EventPublication.Create(published, [Delivery.Create(published.Id, endpoint.Id, null, at)]));
+
+        await events.CommitAsync(token);
+    }
+
+
     public async Task<int> CountAsync(DeliveryState state, CancellationToken token)
     {
         await using HookwrightDbContext context = CreateContext();
