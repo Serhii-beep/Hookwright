@@ -21,6 +21,19 @@ updates:
         - "Microsoft.EntityFrameworkCore.*"
         - "Microsoft.Extensions.Logging.Abstractions"
         - "Npgsql.EntityFrameworkCore.PostgreSQL"
+      ignore:
+        - dependency-name: "Microsoft.Extensions.*"
+          update-types:
+            - version-update:semver-major
+        - dependency-name: "Microsoft.EntityFrameworkCore.*"
+          update-types:
+            - version-update:semver-major
+        - dependency-name: "Npgsql.EntityFrameworkCore.PostgreSQL"
+          update-types:
+            - version-update:semver-major
+        - dependency-name: "System.*"
+          update-types:
+            - version-update:semver-major
   
   - package-ecosystem: github-actions
     directory: /
