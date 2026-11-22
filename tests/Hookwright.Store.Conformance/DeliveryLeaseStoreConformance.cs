@@ -40,23 +40,130 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
     }
 
     [Fact]
-    public async Task ClaimAsync_GivenExcludedEndpoints_LeavesTheirDeliveriesForALaterClaim()
+    public async Task ClaimAsync_GivenSeveralEndpoints_ServesThemInTurnAndResumesWhereItStopped()
     {
-        WebhookEndpoint first = await SeedAsync(2);
-        WebhookEndpoint second = await SeedAsync(2);
+        await SeedAsync(4);
+        await SeedAsync(4);
+        await SeedAsync(4);
+        IReadOnlyList<WebhookEndpointId> order = await RoundOrderAsync();
+        CancellationToken token = TestContext.Current.CancellationToken;
 
         await using IStoreSession worker = OpenSession();
-        IReadOnlyList<ClaimedDelivery> claimed = await worker.Deliveries.ClaimAsync(
-            "web-01:4242:a1b2c3", 10, Lease, Now, [first.Id], TestContext.Current.CancellationToken);
+        ClaimedBatch first = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 4, Lease, Now, Round(perEndpoint: 2), token);
+        ClaimedBatch second = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 4, Lease, Now, Round(perEndpoint: 2, after: first.ResumeAfter), token);
+        ClaimedBatch third = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 4, Lease, Now, Round(perEndpoint: 2, after: second.ResumeAfter), token);
 
-        claimed.Count.ShouldBe(2);
-        claimed.ShouldAllBe(delivery => delivery.EndpointId == second.Id);
+        Served(first).ShouldBe([order[0], order[0], order[1], order[1]]);
+        first.ResumeAfter.ShouldBe(order[1]);
+        Served(second).ShouldBe([order[2], order[2], order[0], order[0]]);
+        second.ResumeAfter.ShouldBe(order[0]);
+        Served(third).ShouldBe([order[1], order[1], order[2], order[2]]);
+        third.ResumeAfter.ShouldBe(order[2]);
+    }
 
-        IReadOnlyList<ClaimedDelivery> rest = await worker.Deliveries.ClaimAsync(
-            "web-01:4242:a1b2c3", 10, Lease, Now, [], TestContext.Current.CancellationToken);
+    [Fact]
+    public async Task ClaimAsync_GivenARoundThatComesBackToWhereItStarted_ServesNoEndpointTwiceAndStartsAfresh()
+    {
+        await SeedAsync(5);
+        await SeedAsync(5);
+        IReadOnlyList<WebhookEndpointId> order = await RoundOrderAsync();
 
-        rest.Count.ShouldBe(2);
-        rest.ShouldAllBe(delivery => delivery.EndpointId == first.Id);
+        await using IStoreSession worker = OpenSession();
+        ClaimedBatch batch = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, Round(perEndpoint: 2, after: order[0]), TestContext.Current.CancellationToken);
+
+        Served(batch).ShouldBe([order[1], order[1], order[0], order[0]]);
+        batch.ResumeAfter.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ClaimAsync_GivenLimits_TakesNoMoreThanEachEndpointMayGive()
+    {
+        await SeedAsync(3);
+        await SeedAsync(3);
+        await SeedAsync(3);
+        IReadOnlyList<WebhookEndpointId> order = await RoundOrderAsync();
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        await using IStoreSession worker = OpenSession();
+        ClaimedBatch batch = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, Round(perEndpoint: 2, limits: [(order[1], 0), (order[2], 1)]), token);
+
+        Served(batch).ShouldBe([order[0], order[0], order[2]]);
+        batch.ResumeAfter.ShouldBeNull();
+        (await worker.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 10, Lease, Now, token)).Count.ShouldBe(6);
+    }
+
+    [Fact]
+    public async Task ClaimAsync_GivenAnEndpointWithNothingDueYet_PassesOverItToTheNext()
+    {
+        await SeedAsync(1);
+        await SeedAsync(1);
+        await SeedAsync(1);
+        IReadOnlyList<WebhookEndpointId> order = await RoundOrderAsync();
+        CancellationToken token = TestContext.Current.CancellationToken;
+        DateTimeOffset later = Now.AddMinutes(5);
+
+        await using IStoreSession worker = OpenSession();
+        ClaimedDelivery failing = (await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now, Round(perEndpoint: 10, limits: [(order[1], 0), (order[2], 0)]), token))
+            .Deliveries.ShouldHaveSingleItem();
+        await worker.Deliveries.CompleteAsync(
+            "web-01:4242:a1b2c3",
+            [Completion(failing, new RetryDecision.Retry(later), Now.AddSeconds(1), AttemptOutcome.ServerError, 503)],
+            token);
+
+        ClaimedBatch batch = await worker.Deliveries.ClaimAsync(
+            "web-01:4242:a1b2c3", 10, Lease, Now.AddSeconds(2), Round(perEndpoint: 10), token);
+
+        Served(batch).ShouldBe([order[1], order[2]]);
+        (await worker.Deliveries.ClaimAsync("web-01:4242:a1b2c3", 10, Lease, later, token))
+            .ShouldHaveSingleItem()
+            .EndpointId.ShouldBe(order[0]);
+    }
+
+    [Fact]
+    public async Task ClaimAsync_GivenRoundsAndManyWorkersAtOnce_HandsOutEveryDeliveryExactlyOnce()
+    {
+        const int Endpoints = 6;
+        const int Each = 200;
+        const int Workers = 8;
+
+        for (int i = 0; i < Endpoints; i++)
+        {
+            await SeedAsync(Each);
+        }
+
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        List<DeliveryId>[] results = await Task.WhenAll(
+            Enumerable.Range(0, Workers).Select(worker => Task.Run(
+                async () =>
+                {
+                    List<DeliveryId> taken = [];
+                    ClaimedBatch batch = new([], null);
+
+                    await using IStoreSession session = OpenSession();
+
+                    do
+                    {
+                        batch = await session.Deliveries.ClaimAsync(
+                            $"worker-{worker}", 10, Lease, Now, Round(perEndpoint: 3, after: batch.ResumeAfter), token);
+                        taken.AddRange(batch.Deliveries.Select(delivery => delivery.DeliveryId));
+                    }
+                    while (batch.Deliveries.Count > 0);
+
+                    return taken;
+                },
+                token)));
+
+        DeliveryId[] claimed = [.. results.SelectMany(result => result)];
+
+        claimed.Length.ShouldBe(Endpoints * Each);
+        claimed.Distinct().Count().ShouldBe(Endpoints * Each);
     }
 
     [Fact]
@@ -646,6 +753,29 @@ public abstract class DeliveryLeaseStoreConformance : StoreConformance
         await using IStoreSession session = OpenSession();
 
         return await SeedDueDeliveriesAsync(session, count, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<IReadOnlyList<WebhookEndpointId>> RoundOrderAsync()
+    {
+        await using IStoreSession session = OpenSession();
+        IReadOnlyList<ClaimedDelivery> everything = await session.Deliveries.ClaimAsync(
+            "probe", 10000, Lease, Now, TestContext.Current.CancellationToken);
+        await session.Deliveries.ReleaseAsync("probe", Now, TestContext.Current.CancellationToken);
+
+        return [.. everything.Select(delivery => delivery.EndpointId).Distinct()];
+    }
+
+    private static ClaimRound Round(
+        int perEndpoint,
+        WebhookEndpointId? after = null,
+        params (WebhookEndpointId Endpoint, int Most)[] limits)
+    {
+        return new ClaimRound(after, perEndpoint, limits.ToDictionary(limit => limit.Endpoint, limit => limit.Most));
+    }
+
+    private static IEnumerable<WebhookEndpointId> Served(ClaimedBatch batch)
+    {
+        return batch.Deliveries.Select(delivery => delivery.EndpointId);
     }
 
     private static DeliveryCompletion Completion(

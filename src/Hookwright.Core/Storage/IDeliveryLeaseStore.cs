@@ -1,5 +1,3 @@
-using Hookwright.Core.Endpoints;
-
 namespace Hookwright.Core.Storage;
 
 /// <summary>
@@ -15,7 +13,8 @@ namespace Hookwright.Core.Storage;
 public interface IDeliveryLeaseStore
 {
     /// <summary>
-    /// Atomically takes up to <paramref name="batchSize"/> due deliveries under a lease.
+    /// Atomically takes up to <paramref name="batchSize"/> due deliveries under a lease,
+    /// starting with the first endpoint and limiting none.
     /// </summary>
     /// <param name="leaseOwner">Identifies this worker, as <c>{machine}:{pid}:{id}</c>.</param>
     /// <param name="batchSize">Maximum deliveries to take.</param>
@@ -38,25 +37,27 @@ public interface IDeliveryLeaseStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Atomically takes up to <paramref name="batchSize"/> due deliveries under a lease, leaving
-    /// those for <paramref name="excludedEndpoints"/> in the queue.
+    /// Atomically takes up to <paramref name="batchSize"/> due deliveries under a lease, serving
+    /// endpoints in turn.
     /// </summary>
     /// <param name="leaseOwner">Identifies this worker, as <c>{machine}:{pid}:{id}</c>.</param>
     /// <param name="batchSize">Maximum deliveries to take.</param>
     /// <param name="leaseDuration">How long the claim holds before it may be reclaimed.</param>
     /// <param name="now">The current instant, from the caller's <see cref="TimeProvider"/>.</param>
-    /// <param name="excludedEndpoints">
-    /// Endpoints the caller cannot send to right now. Their due deliveries are passed over in
-    /// favour of everyone else's.
-    /// </param>
+    /// <param name="round">Where the round of endpoints resumes, and how many deliveries each may give.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
-    /// <returns>The claimed deliveries, empty when nothing else is due.</returns>
-    Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    /// <returns>The claimed deliveries, and where the next claim resumes the round.</returns>
+    /// <remarks>
+    /// No endpoint is served twice by one claim, and none is passed over while it has due deliveries
+    /// and a share to give. What a claim costs follows the number of endpoints with deliveries
+    /// waiting, never the depth of one endpoint's backlog.
+    /// </remarks>
+    Task<ClaimedBatch> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
-        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+        ClaimRound round,
         CancellationToken cancellationToken);
 
     /// <summary>

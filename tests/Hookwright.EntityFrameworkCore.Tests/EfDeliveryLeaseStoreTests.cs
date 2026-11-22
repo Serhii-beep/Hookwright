@@ -23,12 +23,16 @@ public sealed class EfDeliveryLeaseStoreTests
 
         }
 
-        public override Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+        protected override IComparer<Guid> EndpointOrder => Comparer<Guid>.Default;
+
+        protected override Task<IReadOnlyList<Guid>> TakeAsync(
             string leaseOwner,
-            int batchSize,
-            TimeSpan leaseDuration,
+            int count,
             DateTimeOffset now,
-            IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+            DateTimeOffset leaseExpiresAt,
+            ClaimRound round,
+            Guid after,
+            Guid upTo,
             CancellationToken cancellationToken)
         {
             throw new NotSupportedException();

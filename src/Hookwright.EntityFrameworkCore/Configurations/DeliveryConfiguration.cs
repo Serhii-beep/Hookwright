@@ -27,8 +27,8 @@ internal sealed class DeliveryConfiguration : IEntityTypeConfiguration<Delivery>
 
         builder.Ignore(d => d.IsTerminal);
 
-        builder.HasIndex(d => new { d.State, d.NextAttemptAt })
-            .HasDatabaseName($"ix_{HookwrightTables.Deliveries}_state_next_attempt_at");
+        builder.HasIndex(d => new { d.State, d.EndpointId, d.NextAttemptAt })
+            .HasDatabaseName($"ix_{HookwrightTables.Deliveries}_state_endpoint_id_next_attempt_at");
 
         builder.HasIndex(d => new { d.EndpointId, d.CreatedAt })
             .IsDescending(false, true)

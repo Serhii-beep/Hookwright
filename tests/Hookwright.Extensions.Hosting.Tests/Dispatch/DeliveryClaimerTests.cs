@@ -52,7 +52,7 @@ public sealed class DeliveryClaimerTests
         await run;
 
         claimed.Total.ShouldBe(3);
-        store.Excluded.ShouldAllBe(excluded => excluded.Count == 0);
+        store.Rounds.ShouldAllBe(round => round.After == null && round.Limits.Count == 0);
         FakeLogRecord record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
         record.Level.ShouldBe(LogLevel.Debug);
         record.Message.ShouldBe("web-01:4242:a1b2c3 claimed 3 deliveries");
@@ -82,8 +82,37 @@ public sealed class DeliveryClaimerTests
         await stopping.CancelAsync();
         await run;
 
-        store.Excluded[0].ShouldBe([held.EndpointId]);
+        store.Rounds[0].Limits.ShouldHaveSingleItem().ShouldBe(KeyValuePair.Create(held.EndpointId, 0));
         store.Due.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_GivenABatchThatFilledBeforeTheRoundWasOver_ResumesAfterTheEndpointServedLast()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        RecordingLeaseStore store = new();
+        SignallingTimeProvider time = new();
+        ClaimedDelivery first = TestDeliveries.Claimed(time.GetUtcNow() + Lease);
+        ClaimedDelivery second = TestDeliveries.Claimed(time.GetUtcNow() + Lease);
+        ClaimedDelivery third = TestDeliveries.Claimed(time.GetUtcNow() + Lease);
+        store.MakeDue(first);
+        store.MakeDue(second);
+        store.MakeDue(third);
+        DeliveryClaimer claimer = CreateClaimer(store, Options(batchSize: 2), time);
+        using CancellationTokenSource stopping = new();
+
+        Task run = claimer.RunAsync(stopping.Token);
+
+        await store.NextClaimAsync(token);
+        await store.NextClaimAsync(token);
+        await time.TimerCreatedAsync(token);
+        time.Advance(ClaimPacing.Floor);
+        await store.NextClaimAsync(token);
+
+        await stopping.CancelAsync();
+        await run;
+
+        store.Rounds.Select(round => round.After).ShouldBe([null, second.EndpointId, null]);
     }
 
     [Fact]

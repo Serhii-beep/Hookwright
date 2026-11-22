@@ -18,7 +18,7 @@ namespace Hookwright.PostgreSql.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.14")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -83,8 +83,8 @@ namespace Hookwright.PostgreSql.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_hookwright_deliveries_endpoint_id_created_at");
 
-                    b.HasIndex("State", "NextAttemptAt")
-                        .HasDatabaseName("ix_hookwright_deliveries_state_next_attempt_at");
+                    b.HasIndex("State", "EndpointId", "NextAttemptAt")
+                        .HasDatabaseName("ix_hookwright_deliveries_state_endpoint_id_next_attempt_at");
 
                     b.ToTable("hookwright_deliveries", (string)null);
                 });

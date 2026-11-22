@@ -15,7 +15,7 @@ namespace Hookwright.Sqlite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
             modelBuilder.Entity("Hookwright.Core.Deliveries.Delivery", b =>
                 {
@@ -77,8 +77,8 @@ namespace Hookwright.Sqlite.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_hookwright_deliveries_endpoint_id_created_at");
 
-                    b.HasIndex("State", "NextAttemptAt")
-                        .HasDatabaseName("ix_hookwright_deliveries_state_next_attempt_at");
+                    b.HasIndex("State", "EndpointId", "NextAttemptAt")
+                        .HasDatabaseName("ix_hookwright_deliveries_state_endpoint_id_next_attempt_at");
 
                     b.ToTable("hookwright_deliveries", (string)null);
                 });

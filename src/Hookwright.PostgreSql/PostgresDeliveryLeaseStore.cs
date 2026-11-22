@@ -1,5 +1,4 @@
 ﻿using Hookwright.Core.Deliveries;
-using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore.Stores;
 
@@ -22,55 +21,69 @@ public sealed class PostgresDeliveryLeaseStore : EfDeliveryLeaseStore
     }
 
     /// <inheritdoc />
-    public override async Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    protected override IComparer<Guid> EndpointOrder => Comparer<Guid>.Default;
+
+    /// <inheritdoc />
+    protected override async Task<IReadOnlyList<Guid>> TakeAsync(
         string leaseOwner,
-        int batchSize,
-        TimeSpan leaseDuration,
+        int count,
         DateTimeOffset now,
-        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+        DateTimeOffset leaseExpiresAt,
+        ClaimRound round,
+        Guid after,
+        Guid upTo,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
-        ArgumentNullException.ThrowIfNull(excludedEndpoints);
-
         DateTimeOffset dueBy = now.ToUniversalTime();
-        DateTimeOffset leaseExpiresAt = (now + leaseDuration).ToUniversalTime();
-        Guid[] excluded = [.. excludedEndpoints.Select(endpoint => endpoint.Value)];
+        DateTimeOffset expiresAt = leaseExpiresAt.ToUniversalTime();
+        Guid[] limited = [.. round.Limits.Select(limit => limit.Key.Value)];
+        int[] limits = [.. round.Limits.Select(limit => limit.Value)];
 
-        List<Guid> taken = await Context.Database
+        return await Context.Database
             .SqlQuery<Guid>($"""
-                WITH due AS (
-                    SELECT id
-                    FROM hookwright_deliveries
-                    WHERE state = {(short)DeliveryState.Pending}
-                        AND next_attempt_at <= {dueBy}
-                        AND endpoint_id <> ALL({excluded})
-                    ORDER BY next_attempt_at
-                    LIMIT {batchSize}
-                    FOR UPDATE SKIP LOCKED)
+                WITH RECURSIVE lane AS (
+                    (SELECT d.endpoint_id, d.next_attempt_at
+                    FROM hookwright_deliveries AS d
+                    WHERE d.state = {(short)DeliveryState.Pending}
+                        AND d.endpoint_id > {after}
+                        AND d.endpoint_id <= {upTo}
+                    ORDER BY d.endpoint_id, d.next_attempt_at
+                    LIMIT 1)
+                    UNION ALL
+                    SELECT following.endpoint_id, following.next_attempt_at
+                    FROM lane
+                    CROSS JOIN LATERAL (
+                        SELECT d.endpoint_id, d.next_attempt_at
+                        FROM hookwright_deliveries AS d
+                        WHERE d.state = {(short)DeliveryState.Pending}
+                            AND d.endpoint_id > lane.endpoint_id
+                            AND d.endpoint_id <= {upTo}
+                        ORDER BY d.endpoint_id, d.next_attempt_at
+                        LIMIT 1) AS following),
+                due AS (
+                    SELECT taken.id
+                    FROM lane
+                    CROSS JOIN LATERAL (
+                        SELECT d.id
+                        FROM hookwright_deliveries AS d
+                        WHERE d.state = {(short)DeliveryState.Pending}
+                            AND d.endpoint_id = lane.endpoint_id
+                            AND d.next_attempt_at <= {dueBy}
+                        ORDER BY d.next_attempt_at
+                        LIMIT COALESCE(({limits})[array_position({limited}, lane.endpoint_id)], {round.PerEndpoint})
+                        FOR UPDATE SKIP LOCKED) AS taken
+                    WHERE lane.next_attempt_at <= {dueBy}
+                    LIMIT {count})
                 UPDATE hookwright_deliveries AS d
                 SET state = {(short)DeliveryState.InFlight},
                     lease_owner = {leaseOwner},
-                    lease_expires_at = {leaseExpiresAt},
+                    lease_expires_at = {expiresAt},
                     attempt_count = d.attempt_count + 1
                 FROM due
                 WHERE d.id = due.id
                 RETURNING d.id AS "Value"
-            """)
+                """)
             .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        if (taken.Count == 0)
-        {
-            return [];
-        }
-
-        return await ProjectClaimedAsync(
-            [.. taken.Select(DeliveryId.FromGuid)],
-            now,
-            cancellationToken)
             .ConfigureAwait(false);
     }
 

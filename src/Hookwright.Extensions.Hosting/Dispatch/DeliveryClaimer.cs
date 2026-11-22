@@ -1,6 +1,7 @@
 ﻿using System.Threading.Channels;
 
 using Hookwright.Core.Configuration;
+using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 
 using Microsoft.Extensions.Logging;
@@ -16,9 +17,9 @@ namespace Hookwright.Dispatch;
 /// nothing fits nothing is claimed, so a slow pipeline shows up as fewer leases held rather than
 /// as memory. The buffer holds two batches, one being handed out and one waiting, so that a claim
 /// round trip never leaves workers idle, and no more, so that a lease is never held long before
-/// anyone works on it. A claim leaves out the endpoints whose circuits would refuse a delivery
-/// right now, so that a saturated endpoint's backlog is passed over in the store instead of being
-/// claimed and handed straight back.
+/// anyone works on it. A claim serves endpoints in turn and takes up the round where the last one
+/// stopped. It passes over the endpoints whose circuits would refuse a delivery right now, instead
+/// of claiming their deliveries and handing them straight back.
 /// </remarks>
 public sealed class DeliveryClaimer
 {
@@ -31,6 +32,7 @@ public sealed class DeliveryClaimer
     private readonly int _capacity;
     private readonly ClaimPacing _pacing;
     private TaskCompletionSource _wake = NewWake();
+    private WebhookEndpointId? _after;
 
     /// <summary>
     /// Creates the claimer.
@@ -155,22 +157,25 @@ public sealed class DeliveryClaimer
     private async Task<int> ClaimAsync(int requested, CancellationToken cancellationToken)
     {
         DateTimeOffset now = _time.GetUtcNow();
-        IReadOnlyList<ClaimedDelivery> claimed = await _store
-            .ClaimAsync(WorkerId, requested, _options.LeaseDuration, now, _circuits.Refusing(now), cancellationToken)
+        ClaimRound round = new(_after, requested, _circuits.Refusing(now).ToDictionary(endpoint => endpoint, _ => 0));
+        ClaimedBatch batch = await _store
+            .ClaimAsync(WorkerId, requested, _options.LeaseDuration, now, round, cancellationToken)
             .ConfigureAwait(false);
 
-        foreach (ClaimedDelivery delivery in claimed)
+        _after = batch.ResumeAfter;
+
+        foreach (ClaimedDelivery delivery in batch.Deliveries)
         {
             await _deliveries.Writer.WriteAsync(delivery, cancellationToken).ConfigureAwait(false);
         }
 
-        if (claimed.Count > 0)
+        if (batch.Deliveries.Count > 0)
         {
-            DispatchMetrics.Claimed.Add(claimed.Count);
-            DispatchLog.Claimed(_logger, WorkerId, claimed.Count);
+            DispatchMetrics.Claimed.Add(batch.Deliveries.Count);
+            DispatchLog.Claimed(_logger, WorkerId, batch.Deliveries.Count);
         }
 
-        return claimed.Count;
+        return batch.Deliveries.Count;
     }
 
     private async Task PauseAsync(TimeSpan pause, CancellationToken cancellationToken)

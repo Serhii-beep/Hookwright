@@ -17,7 +17,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
 
     public List<ClaimCall> Claims { get; } = [];
 
-    public List<IReadOnlyCollection<WebhookEndpointId>> Excluded { get; } = [];
+    public List<ClaimRound> Rounds { get; } = [];
 
     public List<CompleteCall> Completions { get; } = [];
 
@@ -84,22 +84,23 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         return _reaped.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(Patience, cancellationToken);
     }
 
-    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    public async Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        return ClaimAsync(leaseOwner, batchSize, leaseDuration, now, [], cancellationToken);
+        return (await ClaimAsync(leaseOwner, batchSize, leaseDuration, now, ClaimRound.FromTheStart(batchSize), cancellationToken))
+            .Deliveries;
     }
 
-    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    public Task<ClaimedBatch> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
-        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+        ClaimRound round,
         CancellationToken cancellationToken)
     {
         ClaimCall call = new(leaseOwner, batchSize, leaseDuration, now);
@@ -107,7 +108,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         lock (_gate)
         {
             Claims.Add(call);
-            Excluded.Add(excludedEndpoints);
+            Rounds.Add(round);
             Calls.Add("claim");
         }
 
@@ -118,7 +119,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
             NextClaimFailure = null;
             _claimed.Writer.TryWrite(call);
 
-            return Task.FromException<IReadOnlyList<ClaimedDelivery>>(failure);
+            return Task.FromException<ClaimedBatch>(failure);
         }
 
         int waiting = _due.Count;
@@ -127,7 +128,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
         {
             ClaimedDelivery delivery = _due.Dequeue();
 
-            if (taken.Count < batchSize && !excludedEndpoints.Contains(delivery.EndpointId))
+            if (taken.Count < batchSize && round.Limits.GetValueOrDefault(delivery.EndpointId, round.PerEndpoint) > 0)
             {
                 taken.Add(delivery);
             }
@@ -139,7 +140,7 @@ internal sealed class RecordingLeaseStore : IDeliveryLeaseStore
 
         _claimed.Writer.TryWrite(call);
 
-        return Task.FromResult<IReadOnlyList<ClaimedDelivery>>(taken);
+        return Task.FromResult(new ClaimedBatch(taken, taken.Count < batchSize ? null : taken[^1].EndpointId));
     }
 
     public async Task<CompletionReport> CompleteAsync(

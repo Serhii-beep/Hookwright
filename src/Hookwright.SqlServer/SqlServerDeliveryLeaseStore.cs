@@ -1,7 +1,7 @@
-﻿using System.Text.Json;
+﻿using System.Data.SqlTypes;
+using System.Text.Json;
 
 using Hookwright.Core.Deliveries;
-using Hookwright.Core.Endpoints;
 using Hookwright.Core.Storage;
 using Hookwright.EntityFrameworkCore.Stores;
 
@@ -14,6 +14,9 @@ namespace Hookwright.SqlServer;
 /// </summary>
 public sealed class SqlServerDeliveryLeaseStore : EfDeliveryLeaseStore
 {
+    private static readonly IComparer<Guid> ServerOrder = Comparer<Guid>.Create(
+        (left, right) => new SqlGuid(left).CompareTo(new SqlGuid(right)));
+
     /// <summary>
     /// Creates the store.
     /// </summary>
@@ -24,62 +27,71 @@ public sealed class SqlServerDeliveryLeaseStore : EfDeliveryLeaseStore
     }
 
     /// <inheritdoc />
-    public override async Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    protected override IComparer<Guid> EndpointOrder => ServerOrder;
+
+    /// <inheritdoc />
+    protected override async Task<IReadOnlyList<Guid>> TakeAsync(
         string leaseOwner,
-        int batchSize,
-        TimeSpan leaseDuration,
+        int count,
         DateTimeOffset now,
-        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
+        DateTimeOffset leaseExpiresAt,
+        ClaimRound round,
+        Guid after,
+        Guid upTo,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
-        ArgumentNullException.ThrowIfNull(excludedEndpoints);
+        string limits = JsonSerializer.Serialize(
+            round.Limits.Select(limit => new { Endpoint = limit.Key.Value, Most = limit.Value }));
 
-        DateTimeOffset leaseExpiresAt = now + leaseDuration;
-
-        List<object> parameters = [(short)DeliveryState.Pending, now, batchSize, (short)DeliveryState.InFlight, leaseOwner, leaseExpiresAt];
-        string exclusion = string.Empty;
-
-        if (excludedEndpoints.Count > 0)
-        {
-            exclusion = " AND endpoint_id NOT IN ("
-                + string.Join(", ", excludedEndpoints.Select((_, i) => $"{{{parameters.Count + i}}}"))
-                + ")";
-            parameters.AddRange(excludedEndpoints.Select(endpoint => (object)endpoint.Value));
-        }
-
-        string sql = $$"""
-            WITH due AS (
-                SELECT TOP ({2}) id
-                FROM hookwright_deliveries WITH (READPAST, UPDLOCK, ROWLOCK)
-                WHERE state = {0} AND next_attempt_at <= {1}{{exclusion}}
-                ORDER BY next_attempt_at)
-            UPDATE d
-            SET state = {3},
-                lease_owner = {4},
-                lease_expires_at = {5},
-                attempt_count = d.attempt_count + 1
-            OUTPUT inserted.id AS [Value]
-            FROM hookwright_deliveries AS d
-            INNER JOIN due ON d.id = due.id
-            """;
-
-        List<Guid> taken = await Context.Database
-            .SqlQueryRaw<Guid>(sql, [.. parameters])
+        return await Context.Database
+            .SqlQuery<Guid>($"""
+                WITH lane AS (
+                    SELECT first.endpoint_id, first.next_attempt_at
+                    FROM (
+                        SELECT TOP (1) d.endpoint_id, d.next_attempt_at
+                        FROM hookwright_deliveries AS d WITH (READPAST)
+                        WHERE d.state = {(short)DeliveryState.Pending}
+                            AND d.endpoint_id > {after}
+                            AND d.endpoint_id <= {upTo}
+                        ORDER BY d.endpoint_id, d.next_attempt_at) AS first
+                    UNION ALL
+                    SELECT following.endpoint_id, following.next_attempt_at
+                    FROM (
+                        SELECT d.endpoint_id, d.next_attempt_at,
+                            ROW_NUMBER() OVER (ORDER BY d.endpoint_id, d.next_attempt_at) AS position
+                        FROM lane
+                        INNER JOIN hookwright_deliveries AS d WITH (READPAST)
+                            ON d.state = {(short)DeliveryState.Pending}
+                            AND d.endpoint_id > lane.endpoint_id
+                            AND d.endpoint_id <= {upTo}) AS following
+                    WHERE following.position = 1),
+                due AS (
+                    SELECT TOP ({count}) taken.id
+                    FROM lane
+                    OUTER APPLY (
+                        SELECT TOP (1) limited.most
+                        FROM OPENJSON({limits})
+                            WITH (endpoint_id uniqueidentifier '$.Endpoint', most int '$.Most') AS limited
+                        WHERE limited.endpoint_id = lane.endpoint_id) AS share
+                    CROSS APPLY (
+                        SELECT TOP (COALESCE(share.most, {round.PerEndpoint})) d.id
+                        FROM hookwright_deliveries AS d WITH (READPAST, UPDLOCK, ROWLOCK)
+                        WHERE d.state = {(short)DeliveryState.Pending}
+                            AND d.endpoint_id = lane.endpoint_id
+                            AND d.next_attempt_at <= {now}
+                        ORDER BY d.next_attempt_at) AS taken
+                    WHERE lane.next_attempt_at <= {now})
+                UPDATE d
+                SET state = {(short)DeliveryState.InFlight},
+                    lease_owner = {leaseOwner},
+                    lease_expires_at = {leaseExpiresAt},
+                    attempt_count = d.attempt_count + 1
+                OUTPUT inserted.id AS [Value]
+                FROM hookwright_deliveries AS d
+                INNER JOIN due ON d.id = due.id
+                OPTION (MAXRECURSION 0)
+                """)
             .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        if (taken.Count == 0)
-        {
-            return [];
-        }
-
-        return await ProjectClaimedAsync(
-            [.. taken.Select(DeliveryId.FromGuid)],
-            now,
-            cancellationToken)
             .ConfigureAwait(false);
     }
 

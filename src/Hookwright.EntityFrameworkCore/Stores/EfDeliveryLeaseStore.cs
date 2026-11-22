@@ -28,25 +28,70 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
     /// </summary>
     protected DbContext Context { get; }
 
+    /// <summary>
+    /// The order the database keeps endpoint ids in, which is the order a claim serves endpoints in.
+    /// </summary>
+    protected abstract IComparer<Guid> EndpointOrder { get; }
+
     /// <inheritdoc />
-    public Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    public async Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        return ClaimAsync(leaseOwner, batchSize, leaseDuration, now, [], cancellationToken);
+        ClaimedBatch batch = await ClaimAsync(
+            leaseOwner, batchSize, leaseDuration, now, ClaimRound.FromTheStart(batchSize), cancellationToken)
+            .ConfigureAwait(false);
+
+        return batch.Deliveries;
     }
 
     /// <inheritdoc />
-    public abstract Task<IReadOnlyList<ClaimedDelivery>> ClaimAsync(
+    public async Task<ClaimedBatch> ClaimAsync(
         string leaseOwner,
         int batchSize,
         TimeSpan leaseDuration,
         DateTimeOffset now,
-        IReadOnlyCollection<WebhookEndpointId> excludedEndpoints,
-        CancellationToken cancellationToken);
+        ClaimRound round,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(leaseOwner);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseDuration.Ticks);
+        ArgumentNullException.ThrowIfNull(round);
+
+        DateTimeOffset leaseExpireAt = now + leaseDuration;
+        Guid after = round.After?.Value ?? Guid.Empty;
+
+        IReadOnlyList<Guid> ahead = await TakeAsync(
+            leaseOwner, batchSize, now, leaseExpireAt, round, after, Guid.AllBitsSet, cancellationToken)
+            .ConfigureAwait(false);
+        IReadOnlyList<Guid> behind = [];
+
+        if (ahead.Count < batchSize && round.After is not null)
+        {
+            behind = await TakeAsync(
+                leaseOwner, batchSize - ahead.Count, now, leaseExpireAt, round, Guid.Empty, after, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        IReadOnlyList<ClaimedDelivery> claimed = await ProjectClaimedAsync(
+            [.. ahead.Concat(behind).Select(DeliveryId.FromGuid)], now, cancellationToken)
+            .ConfigureAwait(false);
+        HashSet<Guid> wrapped = [.. behind];
+
+        List<ClaimedDelivery> served =
+        [
+            .. claimed
+                .OrderBy(delivery => wrapped.Contains(delivery.DeliveryId.Value))
+                .ThenBy(delivery => delivery.EndpointId.Value, EndpointOrder)
+                .ThenBy(delivery => delivery.DeliveryId.Value)
+        ];
+
+        return new ClaimedBatch(served, served.Count < batchSize ? null : served[^1].EndpointId);
+    }
 
     /// <inheritdoc />
     public async Task<CompletionReport> CompleteAsync(
@@ -143,6 +188,30 @@ public abstract class EfDeliveryLeaseStore : IDeliveryLeaseStore
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Leases due deliveries to <paramref name="leaseOwner"/>, taking them endpoint by endpoint in
+    /// the database's order of endpoint ids, from the endpoint after <paramref name="after"/> as far
+    /// as <paramref name="upTo"/>.
+    /// </summary>
+    /// <param name="leaseOwner">The worker the deliveries are leased to.</param>
+    /// <param name="count">The most deliveries to take.</param>
+    /// <param name="now">The current instant: a delivery is due if its next attempt is no later.</param>
+    /// <param name="leaseExpiresAt">When the leases lapse.</param>
+    /// <param name="round">How many deliveries each endpoint may give.</param>
+    /// <param name="after">The endpoint to start after, itself left out.</param>
+    /// <param name="upTo">The last endpoint to serve.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>The ids of the deliveries taken.</returns>
+    protected abstract Task<IReadOnlyList<Guid>> TakeAsync(
+        string leaseOwner,
+        int count,
+        DateTimeOffset now,
+        DateTimeOffset leaseExpiresAt,
+        ClaimRound round,
+        Guid after,
+        Guid upTo,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Writes each completion to its delivery for every delivery whose lease
