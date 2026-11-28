@@ -21,6 +21,11 @@ namespace Hookwright.Core.Endpoints;
 /// circuit on an instance that has not seen the endpoint yet, so that a restart does not unleash
 /// everything at once on an endpoint that was already failing. Safe to use from every worker at once.
 /// </para>
+/// <para>
+/// A delivery claimed for the endpoint is expected from then until it asks to be sent or is withdrawn.
+/// The room is what the limit leaves once the deliveries in flight and the expected ones are counted:
+/// what a claim may take for the endpoint with nothing turned away when it arrives.
+/// </para>
 /// </remarks>
 public sealed class EndpointCircuit
 {
@@ -45,6 +50,7 @@ public sealed class EndpointCircuit
     private bool _open;
     private bool _probing;
     private DateTimeOffset _reopensAt;
+    private int _expected;
 
     /// <summary>
     /// Creates the circuit for one endpoint.
@@ -78,6 +84,12 @@ public sealed class EndpointCircuit
     }
 
     /// <summary>
+    /// Raised when a circuit that had no room gets some: a slot is given back, the limit rises,
+    /// or the circuit closes. Raised outside the circuit's lock, on the thread that made the room.
+    /// </summary>
+    public event EventHandler? RoomFreed;
+
+    /// <summary>
     /// The most deliveries that may be in flight at once while the circuit is closed.
     /// </summary>
     public int Limit
@@ -101,6 +113,20 @@ public sealed class EndpointCircuit
             lock (_gate)
             {
                 return _inFlight;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deliveries claimed for the endpoint that have not asked to be sent yet.
+    /// </summary>
+    public int Expected
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _expected;
             }
         }
     }
@@ -162,19 +188,55 @@ public sealed class EndpointCircuit
     }
 
     /// <summary>
-    /// Whether <see cref="TryAdmit"/> would admit a delivery now, without taking a slot.
+    /// How many more deliveries may be claimed for the endpoint now.
     /// </summary>
     /// <param name="now">The current instant.</param>
-    public bool Admits(DateTimeOffset now)
+    public int Room(DateTimeOffset now)
     {
         lock (_gate)
         {
-            return _open ? !_probing && now >= _reopensAt : _inFlight < _limit;
+            if (_open)
+            {
+                return !_probing && _expected == 0 && now >= _reopensAt ? 1 : 0;
+            }
+
+            return Math.Max(0, _limit - _inFlight - _expected);
         }
     }
 
     /// <summary>
-    /// Asks to send one delivery to the endpoint now.
+    /// Says that a delivery has been claimed for the endpoint and is on its way to a worker. It
+    /// counts against the room until it asks to be sent, with <see cref="TryAdmit"/>, or is
+    /// withdrawn.
+    /// </summary>
+    public void Expect()
+    {
+        lock (_gate)
+        {
+            _expected++;
+        }
+    }
+
+    /// <summary>
+    /// Says that an expected delivery will not ask to be sent after all.
+    /// </summary>
+    public void Withdraw()
+    {
+        bool freed;
+
+        lock (_gate)
+        {
+            bool full = FullLocked();
+            Arrive();
+            freed = full && !FullLocked();
+        }
+
+        Announce(freed);
+    }
+
+    /// <summary>
+    /// Asks to send one delivery to the endpoint now. If deliveries were expected, this is one
+    /// of them, and it is expected no longer whatever the answer.
     /// </summary>
     /// <param name="now">The current instant.</param>
     /// <returns>
@@ -185,6 +247,8 @@ public sealed class EndpointCircuit
     {
         lock (_gate)
         {
+            Arrive();
+
             if (_open)
             {
                 if (_probing || now < _reopensAt)
@@ -220,34 +284,19 @@ public sealed class EndpointCircuit
     {
         ArgumentNullException.ThrowIfNull(admission);
 
+        CircuitChange change;
+        bool freed;
+
         lock (_gate)
         {
-            EndpointHealth before = HealthLocked();
-            Leave(admission);
-
-            if (_open && !admission.IsProbe)
-            {
-                return CircuitChange.None;
-            }
-
-            switch (AttemptOutcomes.HealthSignalOf(outcome))
-            {
-                case HealthSignal.Answered:
-                    Answered();
-                    break;
-                case HealthSignal.Failed:
-                    if (Failed(now))
-                    {
-                        return CircuitChange.Exhausted;
-                    }
-
-                    break;
-                default:
-                    return CircuitChange.None;
-            }
-
-            return ChangeBetween(before, HealthLocked());
+            bool full = FullLocked();
+            change = Learn(admission, outcome, now);
+            freed = full && !FullLocked();
         }
+
+        Announce(freed);
+
+        return change;
     }
 
     /// <summary>
@@ -258,10 +307,16 @@ public sealed class EndpointCircuit
     {
         ArgumentNullException.ThrowIfNull(admission);
 
+        bool freed;
+
         lock (_gate)
         {
+            bool full = FullLocked();
             Leave(admission);
+            freed = full && !FullLocked();
         }
+
+        Announce(freed);
     }
 
     /// <summary>
@@ -302,6 +357,56 @@ public sealed class EndpointCircuit
             (EndpointHealth.Degraded, EndpointHealth.Healthy) => CircuitChange.Recovered,
             _ => CircuitChange.None
         };
+    }
+
+    private CircuitChange Learn(Admission.Granted admission, AttemptOutcome outcome, DateTimeOffset now)
+    {
+        EndpointHealth before = HealthLocked();
+        Leave(admission);
+
+        if (_open && !admission.IsProbe)
+        {
+            return CircuitChange.None;
+        }
+
+        switch (AttemptOutcomes.HealthSignalOf(outcome))
+        {
+            case HealthSignal.Answered:
+                Answered();
+                break;
+            case HealthSignal.Failed:
+                if (Failed(now))
+                {
+                    return CircuitChange.Exhausted;
+                }
+
+                break;
+            default:
+                return CircuitChange.None;
+        }
+
+        return ChangeBetween(before, HealthLocked());
+    }
+
+    private bool FullLocked()
+    {
+        return _open || _inFlight + _expected >= _limit;
+    }
+
+    private void Announce(bool freed)
+    {
+        if (freed)
+        {
+            RoomFreed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void Arrive()
+    {
+        if (_expected > 0)
+        {
+            _expected--;
+        }
     }
 
     private EndpointHealth HealthLocked()

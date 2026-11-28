@@ -92,7 +92,7 @@ public sealed class EndpointCircuits
 
         foreach ((WebhookEndpointId endpointId, EndpointCircuit circuit) in _circuits)
         {
-            if (circuit.Admits(now))
+            if (circuit.Room(now) > 0)
             {
                 continue;
             }

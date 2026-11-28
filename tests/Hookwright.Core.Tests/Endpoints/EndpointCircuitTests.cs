@@ -1,4 +1,6 @@
-﻿using Hookwright.Core.Deliveries;
+﻿using System.Collections.Concurrent;
+
+using Hookwright.Core.Deliveries;
 using Hookwright.Core.Endpoints;
 
 namespace Hookwright.Core.Tests.Endpoints;
@@ -351,31 +353,201 @@ public sealed class EndpointCircuitTests
     }
 
     [Fact]
-    public void Admits_GivenAFreeSlot_SaysSoWithoutTakingIt()
+    public void Room_GivenAClosedCircuit_IsTheLimitLessWhatIsInFlightAndWhatIsExpected()
     {
-        EndpointCircuit circuit = Circuit(concurrency: 1);
+        EndpointCircuit circuit = Circuit(concurrency: 4);
 
-        circuit.Admits(Now).ShouldBeTrue();
-        circuit.InFlight.ShouldBe(0);
+        circuit.Room(Now).ShouldBe(4);
 
         circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>();
+        circuit.Expect();
+        circuit.Expect();
 
-        circuit.Admits(Now).ShouldBeFalse();
+        circuit.InFlight.ShouldBe(1);
+        circuit.Expected.ShouldBe(2);
+        circuit.Room(Now).ShouldBe(1);
     }
 
     [Fact]
-    public void Admits_GivenAnOpenCircuit_SaysSoOnlyOnceTheCooldownIsOverAndNoProbeIsOut()
+    public void Room_GivenALimitCutBelowWhatIsAlreadyOnItsWay_IsNone()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 4, failures: 2);
+
+        for (int i = 0; i < 4; i++)
+        {
+            circuit.Expect();
+        }
+
+        Fail(circuit, Now);
+
+        circuit.Limit.ShouldBe(2);
+        circuit.Expected.ShouldBe(3);
+        circuit.Room(Now).ShouldBe(0);
+    }
+
+    [Fact]
+    public void Room_GivenAnOpenCircuit_IsItsOneProbeOnceTheCooldownIsOverAndNoneIsOutOrOnItsWay()
     {
         EndpointCircuit circuit = Open();
         DateTimeOffset reopened = Now + Cooldown;
 
-        circuit.Admits(reopened - TimeSpan.FromTicks(1)).ShouldBeFalse();
-        circuit.Admits(reopened).ShouldBeTrue();
+        circuit.Room(reopened - TimeSpan.FromTicks(1)).ShouldBe(0);
+        circuit.Room(reopened).ShouldBe(1);
+
+        circuit.Expect();
+
+        circuit.Room(reopened).ShouldBe(0);
 
         circuit.TryAdmit(reopened).ShouldBe(new Admission.Granted(isProbe: true));
 
-        circuit.Admits(reopened).ShouldBeFalse();
+        circuit.Room(reopened).ShouldBe(0);
     }
+
+    [Fact]
+    public void TryAdmit_GivenADeliveryThatWasExpected_CountsItInFlightAndExpectedNoLonger()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 2);
+        circuit.Expect();
+        circuit.Expect();
+
+        circuit.TryAdmit(Now).ShouldBe(new Admission.Granted(isProbe: false));
+        circuit.TryAdmit(Now).ShouldBe(new Admission.Granted(isProbe: false));
+
+        circuit.Expected.ShouldBe(0);
+        circuit.InFlight.ShouldBe(2);
+        circuit.TryAdmit(Now).ShouldBe(new Admission.Refused(null));
+    }
+
+    [Fact]
+    public void TryAdmit_GivenARefusal_StopsExpectingTheDeliveryAllTheSame()
+    {
+        EndpointCircuit circuit = Open();
+        circuit.Expect();
+
+        circuit.TryAdmit(Now).ShouldBe(new Admission.Refused(Now + Cooldown));
+
+        circuit.Expected.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Withdraw_Always_StopsExpectingOneDeliveryAndNeverFewerThanNone()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 1);
+        circuit.Expect();
+        circuit.Room(Now).ShouldBe(0);
+
+        circuit.Withdraw();
+        circuit.Withdraw();
+
+        circuit.Expected.ShouldBe(0);
+        circuit.Room(Now).ShouldBe(1);
+    }
+
+    [Fact]
+    public void RoomFreed_GivenASlotGivenBackByACircuitThatHadNoRoom_IsRaisedThenAndNotAgainWhileThereIsRoom()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 2);
+        int freed = 0;
+        circuit.RoomFreed += (_, _) => freed++;
+        Admission.Granted first = circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>();
+        Admission.Granted second = circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>();
+
+        circuit.Record(first, AttemptOutcome.Succeeded, Now);
+
+        freed.ShouldBe(1);
+
+        circuit.Record(second, AttemptOutcome.Succeeded, Now);
+
+        freed.ShouldBe(1);
+    }
+
+    [Fact]
+    public void RoomFreed_GivenAReleaseOrAWithdrawalThatMakesRoom_IsRaised()
+    {
+        EndpointCircuit circuit = Circuit(concurrency: 1);
+        int freed = 0;
+        circuit.RoomFreed += (_, _) => freed++;
+
+        circuit.Release(circuit.TryAdmit(Now).ShouldBeOfType<Admission.Granted>());
+
+        freed.ShouldBe(1);
+
+        circuit.Expect();
+        circuit.Withdraw();
+
+        freed.ShouldBe(2);
+    }
+
+    [Fact]
+    public void RoomFreed_GivenAProbe_IsRaisedWhenItIsAnsweredAndNotWhenItFails()
+    {
+        EndpointCircuit circuit = Open();
+        int freed = 0;
+        circuit.RoomFreed += (_, _) => freed++;
+        DateTimeOffset reopened = Now + Cooldown;
+
+        circuit.Record(circuit.TryAdmit(reopened).ShouldBeOfType<Admission.Granted>(), AttemptOutcome.ServerError, reopened);
+
+        freed.ShouldBe(0);
+
+        DateTimeOffset again = reopened + Cooldown;
+        circuit.Record(circuit.TryAdmit(again).ShouldBeOfType<Admission.Granted>(), AttemptOutcome.Succeeded, again);
+
+        freed.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task TryAdmit_GivenNoMoreExpectedThanThereWasRoomFor_RefusesNoneOfThemAcrossThreads()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        EndpointCircuit circuit = Circuit(concurrency: 2);
+        using BlockingCollection<int> onTheirWay = [];
+        int refused = 0;
+        Task[] workers =
+        [
+            .. Enumerable.Range(0, 8).Select(_ => Task.Run(
+                () =>
+                {
+                    foreach (int _ in onTheirWay.GetConsumingEnumerable(token))
+                    {
+                        if (circuit.TryAdmit(Now) is Admission.Granted granted)
+                        {
+                            Thread.Yield();
+                            circuit.Record(granted, AttemptOutcome.Succeeded, Now);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref refused);
+                        }
+                    }
+                },
+                token))
+        ];
+
+        try
+        {
+            for (int claimed = 0; claimed < 20_000;)
+            {
+                SpinWait.SpinUntil(() => circuit.Room(Now) > 0, TimeSpan.FromSeconds(10)).ShouldBeTrue();
+
+                for (int room = circuit.Room(Now); room > 0; room--)
+                {
+                    circuit.Expect();
+                    onTheirWay.Add(claimed++, token);
+                }
+            }
+        }
+        finally
+        {
+            onTheirWay.CompleteAdding();
+            await Task.WhenAll(workers);
+        }
+
+        refused.ShouldBe(0);
+        circuit.Expected.ShouldBe(0);
+        circuit.InFlight.ShouldBe(0);
+    }
+
 
     [Fact]
     public void Reconcile_GivenARecordOfALaterRun_RestartsTheClockThere()
